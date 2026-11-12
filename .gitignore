@@ -16,3 +16,7 @@ cdk.out/
 
 # Blenderのバックアップファイルは除外
 *.blend[0-9]*
+
+# ブラウザテストの生成物
+test-results/
+playwright-report/

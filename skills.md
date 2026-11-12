@@ -12,19 +12,19 @@
 
 以下は選定の起点であり、必須の導入セットではない。名称は候補の識別用で、導入時に配布元と対象パスを確認する。同名でも配布元が異なるものを同一視しない。
 
-| 用途・適用条件 | 優先して確認する候補 |
-| --- | --- |
-| 未導入スキルの探索が必要 | [`find-skills`](https://github.com/vercel-labs/skills/tree/main/skills/find-skills)（vercel-labs/skills） |
-| Vue 3・Composition API・コンポーネント設計 | [`vue-best-practices`](https://github.com/vuejs-ai/skills/tree/main/skills/vue-best-practices)（vuejs-ai/skills） |
-| Vueのテスト設計・実装（Vitest・Vue Test Utils・Playwright） | [`vue-testing-best-practices`](https://github.com/vuejs-ai/skills/tree/main/skills/vue-testing-best-practices)（vuejs-ai/skills） |
-| 新しい画面の制作・配色・文字・レイアウトの改善 | [`frontend-design`](https://github.com/anthropics/skills/tree/main/skills/frontend-design)（anthropics/skills） |
-| UI・アクセシビリティ・操作性のコードレビュー | [`web-design-guidelines`](https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines)（vercel-labs/agent-skills） |
-| AWSへのアプリ公開・移行 | [`launch-with-aws`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/core-skills/launch-with-aws)（AWS） |
-| AWS CDKによる構成管理 | [`aws-cdk`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/core-skills/aws-cdk)（AWS） |
-| AWSサーバーレス構成の選定・実装 | [`aws-serverless`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/core-skills/aws-serverless)（AWS） |
-| その他のAWS関連作業 | [`agent-toolkit-for-aws`](https://github.com/aws/agent-toolkit-for-aws)（AWS）。スキル集から利用サービス・言語・作業に合うものを選ぶ |
-| SVG素材の制作 | [`svg-creator`](https://github.com/upbrew-tech/svg-creator-skill)（upbrew-tech/svg-creator-skill） |
-| Three.jsによる3D表現 | [`threejs-skills`](https://github.com/CloudAI-X/threejs-skills)（CloudAI-X）。スキル集から用途に必要なものを選び、対象とするThree.jsの版との互換性を確認する |
+| 用途・適用条件                                              | 優先して確認する候補                                                                                                                                         |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 未導入スキルの探索が必要                                    | [`find-skills`](https://github.com/vercel-labs/skills/tree/main/skills/find-skills)（vercel-labs/skills）                                                    |
+| Vue 3・Composition API・コンポーネント設計                  | [`vue-best-practices`](https://github.com/vuejs-ai/skills/tree/main/skills/vue-best-practices)（vuejs-ai/skills）                                            |
+| Vueのテスト設計・実装（Vitest・Vue Test Utils・Playwright） | [`vue-testing-best-practices`](https://github.com/vuejs-ai/skills/tree/main/skills/vue-testing-best-practices)（vuejs-ai/skills）                            |
+| 新しい画面の制作・配色・文字・レイアウトの改善              | [`frontend-design`](https://github.com/anthropics/skills/tree/main/skills/frontend-design)（anthropics/skills）                                              |
+| UI・アクセシビリティ・操作性のコードレビュー                | [`web-design-guidelines`](https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines)（vercel-labs/agent-skills）                    |
+| AWSへのアプリ公開・移行                                     | [`launch-with-aws`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/core-skills/launch-with-aws)（AWS）                                        |
+| AWS CDKによる構成管理                                       | [`aws-cdk`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/core-skills/aws-cdk)（AWS）                                                        |
+| AWSサーバーレス構成の選定・実装                             | [`aws-serverless`](https://github.com/aws/agent-toolkit-for-aws/tree/main/skills/core-skills/aws-serverless)（AWS）                                          |
+| その他のAWS関連作業                                         | [`agent-toolkit-for-aws`](https://github.com/aws/agent-toolkit-for-aws)（AWS）。スキル集から利用サービス・言語・作業に合うものを選ぶ                         |
+| SVG素材の制作                                               | [`svg-creator`](https://github.com/upbrew-tech/svg-creator-skill)（upbrew-tech/svg-creator-skill）                                                           |
+| Three.jsによる3D表現                                        | [`threejs-skills`](https://github.com/CloudAI-X/threejs-skills)（CloudAI-X）。スキル集から用途に必要なものを選び、対象とするThree.jsの版との互換性を確認する |
 
 `frontend-design` は画面を作る際のデザイン、`web-design-guidelines` はUIコードのレビューを補う。いずれも既存のデザイン方針と [ui-guidelines.md](ui-guidelines.md) を優先する。ブラウザ検証の候補は、採用構成と必要な検証に合わせて選ぶ。未評価のものを名称だけで共通推奨に追加しない。
 
@@ -42,4 +42,13 @@
 
 ## このプロジェクトの採用状況
 
-現在はアプリの要件・構成が未決定のため、プロジェクト固有のスキルは未導入。採用が必要になった時点で記録・セットアップ手段を追加する。
+エディタ先行検証では `vue-best-practices`、`vue-testing-best-practices`、
+`frontend-design` を採用。環境提供版の実体を、LICENSE・参照資料ごと無改変で
+`tools/skill-snapshots/` にアーカイブし、検証用SHA-256で固定している。
+取得元・対象パス・ライセンス・配置先は [採用記録](tools/skills-sources.json) を参照。
+上流コミットは未確認であり、採用版は同梱バイト列のハッシュで識別する。
+
+復元は `python3 tools/restore-skills.py`。既存の異なるファイルは上書きしない。
+このセッションの `.agents/` は環境管理の読み取り専用領域のため、実作業は環境提供版を使用する。
+別ディレクトリへの復元と内容の照合は実施済み。別マシンでの自動認識は未確認。
+AWS関連スキルは本体・インフラの実装時に必要なものだけ採用記録へ追加する。

@@ -1,0 +1,55 @@
+{
+  "skills": [
+    {
+      "name": "vue-best-practices",
+      "purpose": "Vueの状態・コンポーネント設計",
+      "source_url": "https://github.com/vuejs-ai/skills",
+      "source_path": "skills/vue-best-practices",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "c7ffda549266cafe9d4cd5e73b286b7bc17c37525d0c33b2680f86438d1a625a"
+      },
+      "archive": "tools/skill-snapshots/vue-best-practices.tar.gz",
+      "destination": ".agents/skills/vue-best-practices",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "MIT",
+      "license_document": "tools/skill-snapshots/vue-best-practices.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "vue-testing-best-practices",
+      "purpose": "Vitest・Playwrightの検証設計",
+      "source_url": "https://github.com/vuejs-ai/skills",
+      "source_path": "skills/vue-testing-best-practices",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "fd6ed951f58209e792c68bc6b1f084d8378a28f59713e8813dcea23dc58923ab"
+      },
+      "archive": "tools/skill-snapshots/vue-testing-best-practices.tar.gz",
+      "destination": ".agents/skills/vue-testing-best-practices",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "MIT",
+      "license_document": "tools/skill-snapshots/vue-testing-best-practices.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "frontend-design",
+      "purpose": "エディタ検証画面の設計",
+      "source_url": "https://github.com/anthropics/skills",
+      "source_path": "skills/frontend-design",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "8c87c72e2ec37dae1c878534da161317a1e55e1c7eda4ea29ef45e7d419362b8"
+      },
+      "archive": "tools/skill-snapshots/frontend-design.tar.gz",
+      "destination": ".agents/skills/frontend-design",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "Apache-2.0",
+      "license_document": "tools/skill-snapshots/frontend-design.tar.gz!/LICENSE.txt",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
+    }
+  ]
+}
