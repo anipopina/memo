@@ -113,6 +113,9 @@ test('resident passkey login carries the note into an account and list removal p
   await page.keyboard.insertText('account memo');
   await page.getByRole('button', { name: 'アカウント', exact: true }).click();
   await page
+    .getByRole('textbox', { name: 'Passkeyの名前', exact: true })
+    .fill('PC');
+  await page
     .getByRole('button', { name: 'アカウントを作る', exact: true })
     .click();
   await expect(page.getByRole('dialog')).toBeHidden({ timeout: 15000 });
@@ -135,7 +138,8 @@ test('resident passkey login carries the note into an account and list removal p
     .getByRole('button', { name: 'ログイン', exact: true })
     .click();
   await expect(page.getByRole('dialog')).toBeHidden({ timeout: 15000 });
-  await expect(editor).toHaveText('account memo');
+  await expect(editor).toHaveText('');
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]{22}$/);
 });
 
 test('typing during a delayed save survives its acknowledgement', async ({

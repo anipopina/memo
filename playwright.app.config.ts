@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
+  outputDir: 'test-results/app',
   testDir: 'tests/app',
   workers: 2,
   use: { trace: 'retain-on-failure' },

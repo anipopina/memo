@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, shallowRef, watch, nextTick } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
+import { getMarkRange } from '@tiptap/core';
 import {
   canShiftListIndent,
   shiftListIndent,
 } from '../../../../packages/editor/src/memo-line';
-const { editor, composing, link } = defineProps<{
+const { editor, composing } = defineProps<{
   editor: Editor;
   composing: boolean;
-  link: { href: string; anchor: HTMLElement } | null;
 }>();
-const emit = defineEmits<{ closeLink: [] }>();
 const position = shallowRef<{ left: number; top: number } | null>(null);
-const linkPosition = shallowRef<{ left: number; top: number } | null>(null);
+const linkAction = shallowRef<{
+  left: number;
+  top: number;
+  href: string;
+} | null>(null);
 const canIndent = shallowRef(false),
   canOutdent = shallowRef(false);
 function update() {
@@ -32,16 +35,37 @@ function update() {
           }
         : null;
   } else position.value = null;
-  if (link?.anchor.isConnected) {
-    const rect = link.anchor.getBoundingClientRect();
-    linkPosition.value =
-      rect.bottom > 0 && rect.top < bottom
-        ? {
-            left: Math.min(innerWidth - 48, Math.max(8, rect.right - 10)),
-            top: Math.max(48, rect.top - 36),
-          }
-        : null;
-  } else linkPosition.value = null;
+  linkAction.value = null;
+  const actionFocused = document.activeElement?.closest('.link-open');
+  if (
+    (editor.isFocused || actionFocused) &&
+    !composing &&
+    !editor.view.composing &&
+    editor.state.selection.empty
+  ) {
+    const range = getMarkRange(
+      editor.state.selection.$head,
+      editor.schema.marks.link,
+    );
+    if (!range) return;
+    const mark = editor.state.doc
+      .resolve(range.from)
+      .nodeAfter?.marks.find((mark) => mark.type === editor.schema.marks.link);
+    const href = mark?.attrs.href as string | undefined;
+    if (!href || !/^https?:\/\//i.test(href)) return;
+    const start = editor.view.domAtPos(range.from, 1),
+      end = editor.view.domAtPos(range.to, -1);
+    const domRange = editor.view.dom.ownerDocument.createRange();
+    domRange.setStart(start.node, start.offset);
+    domRange.setEnd(end.node, end.offset);
+    const rect = domRange.getBoundingClientRect();
+    if (rect.bottom > 0 && rect.top < bottom)
+      linkAction.value = {
+        href,
+        left: Math.min(innerWidth - 48, Math.max(8, rect.right - 10)),
+        top: Math.max(48, rect.top - 36),
+      };
+  }
 }
 function shift(direction: 1 | -1) {
   if (composing || !canShiftListIndent(editor, direction)) return;
@@ -49,46 +73,34 @@ function shift(direction: 1 | -1) {
   shiftListIndent(editor, direction);
   update();
 }
-function onPointer(event: PointerEvent) {
-  if (
-    link &&
-    !(event.target as HTMLElement).closest('.link-open') &&
-    !(event.target as HTMLElement).closest('a')
-  )
-    emit('closeLink');
+function onBlur({ event }: { event: FocusEvent }) {
+  // Tabbing to the action must leave it mounted long enough to activate it.
+  if ((event.relatedTarget as HTMLElement | null)?.closest('.link-open'))
+    return;
+  update();
 }
 onMounted(() => {
-  for (const event of [
-    'selectionUpdate',
-    'transaction',
-    'focus',
-    'blur',
-  ] as const)
+  for (const event of ['selectionUpdate', 'transaction', 'focus'] as const)
     editor.on(event, update);
   window.addEventListener('resize', update);
   document.addEventListener('scroll', update, true);
-  document.addEventListener('pointerdown', onPointer);
+  editor.on('blur', onBlur);
   window.visualViewport?.addEventListener('resize', update);
   window.visualViewport?.addEventListener('scroll', update);
 });
-// Parent updates a selected link after the editor click event.
+// Composition may finish without a selection change.
 watch(
-  () => link,
+  () => composing,
   () => {
     void nextTick(update);
   },
 );
 onBeforeUnmount(() => {
-  for (const event of [
-    'selectionUpdate',
-    'transaction',
-    'focus',
-    'blur',
-  ] as const)
+  for (const event of ['selectionUpdate', 'transaction', 'focus'] as const)
     editor.off(event, update);
   window.removeEventListener('resize', update);
   document.removeEventListener('scroll', update, true);
-  document.removeEventListener('pointerdown', onPointer);
+  editor.off('blur', onBlur);
   window.visualViewport?.removeEventListener('resize', update);
   window.visualViewport?.removeEventListener('scroll', update);
 });
@@ -121,14 +133,17 @@ onBeforeUnmount(() => {
     </button>
   </div>
   <a
-    v-if="link && linkPosition && !composing"
+    v-if="linkAction && !composing"
     class="link-open"
-    :href="link.href"
-    :style="{ left: linkPosition.left + 'px', top: linkPosition.top + 'px' }"
+    :href="linkAction.href"
+    :style="{ left: linkAction.left + 'px', top: linkAction.top + 'px' }"
     target="_blank"
     rel="noopener noreferrer"
     aria-label="リンクを別タブで開く"
     title="別タブで開く"
+    @pointerdown.prevent
+    @mousedown.prevent
+    @blur="update"
     >↗</a
   >
 </template>

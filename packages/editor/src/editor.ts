@@ -7,11 +7,17 @@ import { UndoRedo } from '@tiptap/extensions';
 import { EditorState } from '@tiptap/pm/state';
 import { parseMarkdown } from '../../core/src/markdown';
 import { MemoLine } from './memo-line';
+import { liveLinksPlugin } from './live-links';
+const LiveLink = Link.extend({
+  addProseMirrorPlugins() {
+    return [...(this.parent?.() ?? []), liveLinksPlugin()];
+  },
+});
 
 export function createMemoEditor(options: {
   content: string;
   onChange: (editor: CoreEditor) => void;
-  onLink: (href: string, event: MouseEvent) => void;
+  onLink?: (href: string, event: MouseEvent) => void;
   onComposition: (composing: boolean) => void;
 }): Editor {
   const editor: Editor = new Editor({
@@ -20,9 +26,9 @@ export function createMemoEditor(options: {
       MemoLine,
       Text,
       UndoRedo,
-      Link.configure({
+      LiveLink.configure({
         openOnClick: false,
-        autolink: true,
+        autolink: false,
         linkOnPaste: false,
         isAllowedUri: (url) => /^https?:\/\//i.test(url),
         shouldAutoLink: (url) => /^https?:\/\//i.test(url),
@@ -44,14 +50,15 @@ export function createMemoEditor(options: {
         event.preventDefault();
         return editor.commands.insertContent(parseMarkdown(text).content ?? []);
       },
-      handleClick: (_view, _position, event) => {
+      handleClick: (_view, position, event) => {
         const anchor = (event.target as HTMLElement).closest('a');
         const href = anchor?.getAttribute('href');
         if (!href || !/^https?:\/\//i.test(href)) return false;
         event.preventDefault();
         if (event.ctrlKey || event.metaKey)
           window.open(href, '_blank', 'noopener,noreferrer');
-        else options.onLink(href, event);
+        else if (options.onLink) options.onLink(href, event);
+        else editor.commands.setTextSelection(position);
         return true;
       },
       handleDOMEvents: {

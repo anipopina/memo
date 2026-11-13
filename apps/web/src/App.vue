@@ -27,9 +27,9 @@ const signedIn = shallowRef(false),
 const sidebar = shallowRef(
   localStorage.getItem('memo.sidebar') !== 'closed' && innerWidth >= 800,
 );
+const navigating = shallowRef(false);
 const busy = shallowRef(false),
   message = shallowRef('');
-const link = shallowRef<{ href: string; anchor: HTMLElement } | null>(null);
 const accountDialog =
   useTemplateRef<InstanceType<typeof AccountDialog>>('accountDialog');
 const shareDialog =
@@ -37,16 +37,11 @@ const shareDialog =
 const note = useNote((text, reset) => {
   if (reset) loadMarkdown(editor, text);
   else applyRemoteMarkdown(editor, text);
-  link.value = null;
 });
 const editor = createMemoEditor({
   content: '',
   onChange: (instance) => {
     if (!note.state.composing) note.edit(serializeMarkdown(instance.getJSON()));
-  },
-  onLink: (href, event) => {
-    const anchor = (event.target as HTMLElement).closest('a');
-    if (anchor) link.value = { href, anchor };
   },
   onComposition: (value) => {
     note.state.composing = value;
@@ -129,12 +124,31 @@ async function focusEditor() {
   await nextTick();
   editor.commands.focus('end', { scrollIntoView: false });
 }
+async function openNote(
+  token: string,
+  { allowCreate = false, fresh = false, replace = false } = {},
+) {
+  const opened = await note.open(token, {
+    allowCreate,
+    fresh,
+    activate: () => {
+      if (location.pathname !== `/${token}`)
+        history[replace ? 'replaceState' : 'pushState']({}, '', `/${token}`);
+    },
+  });
+  if (
+    !opened &&
+    note.state.ready &&
+    location.pathname !== `/${note.state.token}`
+  )
+    history.replaceState({}, '', `/${note.state.token}`);
+  return opened;
+}
 async function select(token: string, remember = true) {
   busy.value = true;
   message.value = '';
   try {
-    if (await note.open(token)) {
-      history.pushState({}, '', `/${token}`);
+    if (await openNote(token)) {
       if (remember && signedIn.value)
         localStorage.setItem(`memo.last.${accountId.value}`, token);
       if (innerWidth < 800) sidebar.value = false;
@@ -149,14 +163,13 @@ async function create() {
   busy.value = true;
   try {
     const token = note.newToken();
-    if (!(await note.open(token, true))) return;
+    if (!(await openNote(token, { allowCreate: true, fresh: true }))) return;
     if (!(await note.flush(true))) {
       message.value = '作成できませんでした。本文はこの端末に保持しています。';
       return;
     }
     await refreshList();
     localStorage.setItem(`memo.last.${accountId.value}`, token);
-    history.pushState({}, '', `/${token}`);
     if (innerWidth < 800) sidebar.value = false;
     await focusEditor();
   } catch {
@@ -241,10 +254,27 @@ async function authenticated() {
     busy.value = false;
   }
 }
-async function logout() {
-  signedIn.value = false;
-  accountId.value = '';
-  items.value = [];
+async function logout(): Promise<boolean> {
+  busy.value = true;
+  try {
+    if (!(await note.prepareLeave())) return false;
+    await api('/auth/logout', {});
+    signedIn.value = false;
+    accountId.value = '';
+    items.value = [];
+    note.state.ready = false;
+    const token = note.newToken();
+    localStorage.setItem('memo.current', token);
+    const opened = await openNote(token, {
+      allowCreate: true,
+      fresh: true,
+      replace: true,
+    });
+    if (innerWidth < 800) sidebar.value = false;
+    return opened;
+  } finally {
+    busy.value = false;
+  }
 }
 function toggleList() {
   sidebar.value = !sidebar.value;
@@ -267,14 +297,19 @@ function keyboard(event: KeyboardEvent) {
   }
 }
 async function route() {
-  const path = location.pathname;
-  if (path === '/' || path === '') {
-    await note.open(topToken(), true);
-  } else if (/^\/[A-Za-z0-9_-]{22}$/.test(path) && isNoteToken(path.slice(1)))
-    await note.open(path.slice(1));
-  else {
-    note.state.ready = false;
-    note.state.error = 'メモが見つかりません';
+  navigating.value = true;
+  try {
+    const path = location.pathname;
+    if (path === '/' || path === '')
+      await openNote(topToken(), { allowCreate: true, replace: true });
+    else if (/^\/[A-Za-z0-9_-]{22}$/.test(path) && isNoteToken(path.slice(1)))
+      await openNote(path.slice(1), { replace: true });
+    else {
+      note.state.ready = false;
+      note.state.error = 'メモが見つかりません';
+    }
+  } finally {
+    navigating.value = false;
   }
 }
 async function recover() {
@@ -390,12 +425,16 @@ onBeforeUnmount(() => {
       </div>
       <main class="document-scroll" :aria-label="title">
         <EditorContent
-          v-show="note.state.ready"
+          v-show="note.state.ready && !navigating"
           :editor="editor"
           class="memo-document"
         />
-        <div v-if="!note.state.ready" class="document-error" role="status">
-          {{ note.state.loading ? '' : note.state.error
+        <div
+          v-if="!note.state.ready || navigating"
+          class="document-error"
+          role="status"
+        >
+          {{ note.state.loading || navigating ? '' : note.state.error
           }}<button v-if="!note.state.loading" class="quiet" @click="route">
             再読み込み
           </button>
@@ -410,18 +449,13 @@ onBeforeUnmount(() => {
         >
       </footer>
     </div>
-    <EditorOverlays
-      :editor="editor"
-      :composing="note.state.composing"
-      :link="link"
-      @close-link="link = null"
-    />
+    <EditorOverlays :editor="editor" :composing="note.state.composing" />
     <AccountDialog
       ref="accountDialog"
       :signed-in="signedIn"
       @authenticated="authenticated"
       @closed="note.state.ready && editor.view.focus()"
-      @logout="logout"
+      :sign-out="logout"
     />
     <ShareDialog
       ref="shareDialog"

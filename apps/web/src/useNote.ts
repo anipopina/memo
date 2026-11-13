@@ -42,7 +42,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
       persisted: state.persisted,
       updatedAt: Date.now(),
     };
-    const keep = dirty();
+    const keep = dirty() || !state.persisted;
     draftWork = draftWork
       .catch(() => {})
       .then(async () => {
@@ -74,15 +74,25 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     state.persisted = true;
     if (result.content !== state.content) install(result.content);
   }
-  async function open(token: string, allowCreate = false): Promise<boolean> {
+  async function prepareLeave(): Promise<boolean> {
+    if (!state.ready) return true;
+    if (state.composing) return false;
+    await flush();
+    await protect();
+    return !dirty() || !state.localError;
+  }
+  async function open(
+    token: string,
+    {
+      allowCreate = false,
+      fresh = false,
+      activate,
+    }: { allowCreate?: boolean; fresh?: boolean; activate?: () => void } = {},
+  ): Promise<boolean> {
     if (opening || disposed) return false;
     opening = true;
     try {
-      if (state.ready) {
-        await flush();
-        await protect();
-        if (dirty() && state.localError) return false;
-      }
+      if (!(await prepareLeave())) return false;
       clearTimeout(idle);
       const epoch = ++generation;
       state.ready = false;
@@ -92,6 +102,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
       state.recovery = '';
       const previousToken = state.token;
       state.token = token;
+      activate?.();
       state.content = '';
       state.base = '';
       state.version = 0;
@@ -108,11 +119,15 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
         state.localError = true;
       }
       try {
-        const remote = await api<RemoteNote>(`/notes/${token}`);
-        if (epoch !== generation) return false;
-        state.base = stored?.base ?? remote.content;
-        state.content = stored?.content ?? remote.content;
-        reconcile(remote);
+        if (fresh) {
+          /* A new random capability can be reserved without a server record. */
+        } else {
+          const remote = await api<RemoteNote>(`/notes/${token}`);
+          if (epoch !== generation) return false;
+          state.base = stored?.base ?? remote.content;
+          state.content = stored?.content ?? remote.content;
+          reconcile(remote);
+        }
       } catch (error) {
         if (epoch !== generation) return false;
         if (stored) {
@@ -120,7 +135,12 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
           state.content = stored.content;
           state.version = stored.version;
           state.persisted = stored.persisted;
-          state.error = '通信待ち';
+          state.error =
+            error instanceof ApiError &&
+            error.status === 404 &&
+            !stored.persisted
+              ? ''
+              : '通信待ち';
         } else if (
           error instanceof ApiError &&
           error.status === 404 &&
@@ -309,5 +329,5 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     document.removeEventListener('visibilitychange', visibility);
     window.removeEventListener('online', online);
   });
-  return { state, open, edit, flush, dirty, poll, newToken };
+  return { state, open, edit, flush, dirty, poll, newToken, prepareLeave };
 }

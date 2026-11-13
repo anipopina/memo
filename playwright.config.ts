@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
+  outputDir: 'test-results/editor',
   testDir: './tests/browser',
   use: { trace: 'retain-on-failure' },
   projects: [

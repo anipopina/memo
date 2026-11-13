@@ -132,7 +132,7 @@ describe('HTTP boundaries', () => {
     const response = await app.request('/api/auth/begin', {
       method: 'POST',
       headers: { Origin: origin, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'register' }),
+      body: JSON.stringify({ kind: 'register', name: 'PC' }),
     });
     const { challengeId } = await response.json();
     for (const expected of ['verification_failed', 'invalid_challenge']) {
@@ -191,4 +191,54 @@ it('keeps notes and encrypted account references across a local server restart',
     repo.db.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+it('lists passkey names/dates and keeps one active credential under concurrent revocations', async () => {
+  const { repo } = fixture();
+  const { Auth } = await import('../apps/server/auth');
+  const auth = new Auth(repo, origin);
+  const ids = ['first', 'second'];
+  for (const [index, id] of ids.entries())
+    await repo.commit([
+      {
+        key: { pk: `credential#${hash(id)}`, sk: 'credential' },
+        expected: null,
+        value: {
+          account: 'a',
+          id,
+          publicKey: 'AA',
+          counter: 0,
+        } as import('../apps/server/repository').RecordValue,
+      },
+      {
+        key: { pk: 'account#a', sk: `credential#${hash(id)}` },
+        expected: null,
+        value: {
+          id,
+          name: `key ${index}`,
+          createdAt: 1000 + index,
+        } as import('../apps/server/repository').RecordValue,
+      },
+    ]);
+  expect(await auth.credentials('a')).toEqual([
+    { id: 'first', name: 'key 0', createdAt: 1000 },
+    { id: 'second', name: 'key 1', createdAt: 1001 },
+  ]);
+  await expect(auth.revoke('other', 'first')).rejects.toMatchObject({
+    code: 'not_found',
+  });
+  const results = await Promise.allSettled(
+    ids.map((id) => auth.revoke('a', id)),
+  );
+  expect(
+    results.filter((result) => result.status === 'fulfilled'),
+  ).toHaveLength(1);
+  const remaining = await auth.credentials('a');
+  expect(remaining).toHaveLength(1);
+  await expect(auth.revoke('a', remaining[0].id)).rejects.toMatchObject({
+    code: 'last_passkey',
+  });
+  expect((await fixture().app.request('/api/auth/credentials')).status).toBe(
+    401,
+  );
 });

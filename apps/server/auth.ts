@@ -21,6 +21,7 @@ interface Challenge extends RecordValue {
   kind: 'register' | 'login';
   account?: string;
   existing: boolean;
+  name: string;
 }
 interface Credential extends RecordValue {
   account: string;
@@ -31,10 +32,19 @@ interface Credential extends RecordValue {
 }
 interface CredentialReference extends RecordValue {
   id: string;
+  name: string;
+  createdAt: number;
 }
 interface Session extends RecordValue {
   account: string;
 }
+interface CredentialGuard extends RecordValue {
+  changedAt: number;
+}
+const guardKey = (account: string) => ({
+  pk: `account#${account}`,
+  sk: 'credential-state',
+});
 const credentialKey = (id: string) => ({
   pk: `credential#${hash(id)}`,
   sk: 'credential',
@@ -58,7 +68,9 @@ export class Auth {
       session = await this.repo.get<Session>(key);
     if (session) await this.repo.commit([{ key, expected: session.rev }]);
   }
-  async begin(kind: 'register' | 'login', account?: string, name = 'memo') {
+  async begin(kind: 'register' | 'login', account?: string, name = '') {
+    if (kind === 'register' && (!name.trim() || name.trim().length > 80))
+      throw new AppError('invalid_passkey_name');
     const rpID = new URL(this.origin).hostname;
     const accountId =
       kind === 'register'
@@ -96,6 +108,7 @@ export class Auth {
       kind,
       account: accountId,
       existing: !!account,
+      name: name.trim(),
       expires: nowSeconds() + 300,
     };
     await this.repo.commit([
@@ -106,6 +119,48 @@ export class Auth {
       },
     ]);
     return { challengeId, options };
+  }
+  async credentials(account: string) {
+    const rows = await this.repo.query<CredentialReference>(
+      `account#${account}`,
+      'credential#',
+    );
+    return rows
+      .map(({ value }) => ({
+        id: value.id,
+        name: value.name,
+        createdAt: value.createdAt,
+      }))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+  async revoke(account: string, id: string) {
+    // Guard every registration/revocation so concurrent removals cannot delete the last key.
+    const key = guardKey(account),
+      guard = await this.repo.get<CredentialGuard>(key);
+    const credentials = await this.credentials(account);
+    const credential = await this.repo.get<Credential>(credentialKey(id));
+    if (
+      !credential ||
+      credential.value.account !== account ||
+      !credentials.some((item) => item.id === id)
+    )
+      throw new AppError('not_found', 404);
+    if (credentials.length <= 1) throw new AppError('last_passkey', 409);
+    const referenceKey = {
+      pk: `account#${account}`,
+      sk: `credential#${hash(id)}`,
+    };
+    const reference = await this.repo.get<CredentialReference>(referenceKey);
+    if (!reference) throw new AppError('not_found', 404);
+    await this.repo.commit([
+      {
+        key,
+        expected: guard?.rev ?? null,
+        value: { changedAt: Date.now() } as CredentialGuard,
+      },
+      { key: credentialKey(id), expected: credential.rev },
+      { key: referenceKey, expected: reference.rev },
+    ]);
   }
   async finish(
     challengeId: string,
@@ -141,7 +196,13 @@ export class Auth {
           counter: credential.counter,
           transports: credential.transports,
         };
+        const guard = await this.repo.get<CredentialGuard>(guardKey(accountId));
         changes.push(
+          {
+            key: guardKey(accountId),
+            expected: guard?.rev ?? null,
+            value: { changedAt: Date.now() } as CredentialGuard,
+          },
           { key: credentialKey(credential.id), expected: null, value: stored },
           {
             key: {
@@ -149,7 +210,11 @@ export class Auth {
               sk: `credential#${hash(credential.id)}`,
             },
             expected: null,
-            value: { id: credential.id } as CredentialReference,
+            value: {
+              id: credential.id,
+              name: value.name,
+              createdAt: Date.now(),
+            } as CredentialReference,
           },
         );
       } else {

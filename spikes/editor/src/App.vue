@@ -27,6 +27,7 @@ const merged = computed(() =>
 const editor = createMemoEditor({
   content: fixture,
   onChange: (instance) => {
+    selectedLink.value = null;
     if (!composing.value) output.value = serializeMarkdown(instance.getJSON());
   },
   onLink: (href) => {

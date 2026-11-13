@@ -62,13 +62,14 @@ export function createApp(repo: Repository, config: AppConfig) {
   );
   app.use('*', async (c, next) => {
     // Short-lived hashed buckets enforce limits across Lambda instances without access logs.
-    const group = c.req.path.startsWith('/api/auth/')
-      ? 'auth'
-      : c.req.method === 'PUT'
-        ? 'create'
-        : c.req.method === 'GET'
-          ? 'read'
-          : 'write';
+    const group =
+      c.req.method === 'GET'
+        ? 'read'
+        : c.req.path.startsWith('/api/auth/')
+          ? 'auth'
+          : c.req.method === 'PUT'
+            ? 'create'
+            : 'write';
     const period = group === 'create' ? 3600 : 60,
       limit =
         group === 'create'
@@ -113,6 +114,18 @@ export function createApp(repo: Repository, config: AppConfig) {
   app.get('/api/session', (c) =>
     c.json({ signedIn: !!c.get('account'), account: c.get('account') }),
   );
+  app.use('/api/auth/credentials*', async (c, next) => {
+    if (!c.get('account')) return c.json({ error: 'unauthorized' }, 401);
+    await next();
+  });
+  app.get('/api/auth/credentials', async (c) =>
+    c.json(await auth.credentials(c.get('account')!)),
+  );
+  app.delete('/api/auth/credentials/:id', async (c) => {
+    const id = z.string().min(1).max(2048).parse(c.req.param('id'));
+    await auth.revoke(c.get('account')!, id);
+    return c.json({ ok: true });
+  });
   app.post('/api/auth/begin', async (c) => {
     const body = z
       .object({
