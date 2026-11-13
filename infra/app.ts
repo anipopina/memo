@@ -21,16 +21,46 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import { resolve } from 'node:path';
 
+const domain = 'memo.anipopina.com';
+const account = process.env.CDK_DEFAULT_ACCOUNT;
+function hostedZone(scope: Stack) {
+  const id = new CfnParameter(scope, 'HostedZoneId', {
+    type: 'String',
+    description: 'Existing anipopina.com hosted zone ID. No zone is created.',
+  });
+  return route53.HostedZone.fromHostedZoneAttributes(scope, 'Zone', {
+    hostedZoneId: id.valueAsString,
+    zoneName: 'anipopina.com',
+  });
+}
+
+export class MemoCertificateStack extends Stack {
+  constructor(scope: Construct, id: string) {
+    super(scope, id, {
+      env: { region: 'us-east-1', account },
+      terminationProtection: true,
+    });
+    const certificate = new acm.Certificate(this, 'Certificate', {
+      domainName: domain,
+      validation: acm.CertificateValidation.fromDns(hostedZone(this)),
+    });
+    new CfnOutput(this, 'CertificateArn', {
+      value: certificate.certificateArn,
+    });
+  }
+}
+
 export class MemoStack extends Stack {
   constructor(scope: Construct, id: string) {
     super(scope, id, {
-      env: { region: 'us-east-1', account: process.env.CDK_DEFAULT_ACCOUNT },
+      env: { region: 'ap-northeast-1', account },
       terminationProtection: true,
     });
-    const domain = 'memo.anipopina.com';
-    const zoneId = new CfnParameter(this, 'HostedZoneId', {
+    const zone = hostedZone(this);
+    const certificateArn = new CfnParameter(this, 'CertificateArn', {
       type: 'String',
-      description: 'Existing anipopina.com hosted zone ID. No zone is created.',
+      allowedPattern: 'arn:aws:acm:us-east-1:[0-9]{12}:certificate/[a-f0-9-]+',
+      description: 'CertificateArn output from MemoCertificate in us-east-1.',
     });
     const vaultKey = new CfnParameter(this, 'VaultKey', {
       type: 'String',
@@ -39,14 +69,11 @@ export class MemoStack extends Stack {
       description:
         'Base64-encoded 32 random bytes. Supply securely at deployment; keep an offline backup.',
     });
-    const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
-      hostedZoneId: zoneId.valueAsString,
-      zoneName: 'anipopina.com',
-    });
-    const certificate = new acm.Certificate(this, 'Certificate', {
-      domainName: domain,
-      validation: acm.CertificateValidation.fromDns(zone),
-    });
+    const certificate = acm.Certificate.fromCertificateArn(
+      this,
+      'Certificate',
+      certificateArn.valueAsString,
+    );
     const table = new dynamodb.Table(this, 'Data', {
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
@@ -55,6 +82,7 @@ export class MemoStack extends Stack {
       encryption: dynamodb.TableEncryption.DEFAULT,
       removalPolicy: RemovalPolicy.RETAIN,
       deletionProtection: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
     });
     const logGroup = new logs.LogGroup(this, 'Errors', {
       retention: logs.RetentionDays.THREE_DAYS,
@@ -197,4 +225,5 @@ export class MemoStack extends Stack {
   }
 }
 const app = new App();
+new MemoCertificateStack(app, 'MemoCertificate');
 new MemoStack(app, 'Memo');

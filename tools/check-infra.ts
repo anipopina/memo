@@ -19,6 +19,28 @@ const table = resources.find(
 )!.Properties;
 assert.equal(table.BillingMode, 'PAY_PER_REQUEST');
 assert.equal(table.DeletionProtectionEnabled, true);
+assert.deepEqual(table.PointInTimeRecoverySpecification, {
+  PointInTimeRecoveryEnabled: true,
+});
+assert.equal(
+  resources.some(
+    (resource) => resource.Type === 'AWS::CertificateManager::Certificate',
+  ),
+  false,
+);
+assert.match(template.Parameters.CertificateArn.AllowedPattern, /us-east-1/);
+const certificateTemplate = JSON.parse(
+  readFileSync('cdk.out/MemoCertificate.template.json', 'utf8'),
+);
+assert.equal(
+  (Object.values(certificateTemplate.Resources) as { Type: string }[]).filter(
+    (resource) => resource.Type === 'AWS::CertificateManager::Certificate',
+  ).length,
+  1,
+);
+const assembly = JSON.parse(readFileSync('cdk.out/manifest.json', 'utf8'));
+assert.match(assembly.artifacts.Memo.environment, /ap-northeast-1$/);
+assert.match(assembly.artifacts.MemoCertificate.environment, /us-east-1$/);
 const distribution = resources.find(
   (resource) => resource.Type === 'AWS::CloudFront::Distribution',
 )!.Properties.DistributionConfig as {

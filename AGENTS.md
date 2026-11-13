@@ -73,6 +73,6 @@
 - 起動・検証コマンド：正本は [package.json](package.json) のscripts。`pnpm dev`、`pnpm dev:mcp`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm test:browser`、`pnpm build`、`pnpm format:check`。pnpmの版はpackageManagerとロックファイルに従う。
 - 操作性の優先順位：使い慣れた人が書き込みやすいことを最優先し、初回説明や管理UIを本文の前に増やさない。
 - 対象環境：iPhone SafariとWindows Chrome。AIクライアントはChatGPTを優先する。Playwright WebKitの結果をiPhone実機検証と同一視しない。
-- 公開先・運用上の制約：`memo.anipopina.com` を予定。顧客管理KMS鍵や常時稼働サーバーを追加せず、Lambda環境変数の鍵＋AES-256-GCMを予定。公開・AWSリソース作成・コミットは明示的な依頼なしに行わない。
+- 公開先・運用上の制約：`memo.anipopina.com` に公開済み。本体は東京、CloudFront用証明書はus-east-1。顧客管理KMS鍵や常時稼働サーバーを追加せず、Lambda環境変数の鍵＋AES-256-GCMを使用。公開・AWSリソース作成・コミットは明示的な依頼なしに行わない。
 - 競合方針：手動マージ画面を設けず、差分を自動統合する。重なった範囲は保存する側を優先し、一部の変更が失われ得ることをユーザーは許容している。詳しい規則は設計文書を参照する。
 - 文書の優先関係：[機能仕様](docs/spec-v0.2.md) を基礎とし、その後の合意は [設計文書](docs/design.md) で上書きする。`tmp/` の原本を削除しない。

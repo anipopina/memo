@@ -118,6 +118,23 @@
       "license_document": "tools/skill-snapshots/aws-sdk-js-v3-usage.tar.gz!/LICENSE",
       "local_modifications": false,
       "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "aws-sdk-python-usage",
+      "purpose": "ai-devを明示する読み取り専用AWS調査",
+      "source_url": "https://github.com/aws/agent-toolkit-for-aws",
+      "source_path": "skills/core-skills/aws-sdk-python-usage",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "55231f03bab62f6eed1b78eec6aa61faa27573f452c0be4d0745137c3b6a12b3"
+      },
+      "archive": "tools/skill-snapshots/aws-sdk-python-usage.tar.gz",
+      "destination": ".agents/skills/aws-sdk-python-usage",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "Apache-2.0",
+      "license_document": "tools/skill-snapshots/aws-sdk-python-usage.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
     }
   ]
 }

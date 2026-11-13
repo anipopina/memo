@@ -199,7 +199,7 @@ Referrer-Policy、本文のno-store、CSP、検索除外、Origin検証と入力
 NAT Gateway、ロードバランサー、単独契約WAF、常時稼働サーバーは使わない。
 APIのスロットリングと作成・更新のアプリ側レート制限を設ける。
 CloudFrontの無料プランは公開時に適用条件を確認する。
-S3とCDKの古い成果物を無制限に残さない。DynamoDB PITRのみをバックアップ候補として残す。
+S3とCDKの古い成果物を無制限に残さない。DynamoDB PITRをバックアップとして有効にする。
 API Gateway、DynamoDBオンデマンド、保存容量、ログ、PITRには少量でも従量費が発生し得る。
 無料枠はアカウント全体の利用と契約条件に依存し、料金ゼロは保証しない。
 
@@ -224,3 +224,10 @@ SDKが対応するプロトコル版を記録し、未確認のクライアン�
 - [MCP TypeScript SDK v1](https://ts.sdk.modelcontextprotocol.io/server)：今回固定したSDK系列。
 - [Lambda環境変数](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars-encryption.html)：既定の暗号化。
 - [DynamoDB料金](https://aws.amazon.com/dynamodb/pricing/)：オンデマンドとPITRの課金。
+
+## AWS公開構成の確定（2026-11-13）
+
+`ai-dev` のアカウントを使い、API・DynamoDB・S3は東京リージョンへ配置する。
+CloudFront用ACM証明書だけはus-east-1の別スタックへ分け、出力ARNを本体へパラメーターで渡す。
+公開ドメインは `memo.anipopina.com`、既存の `anipopina.com` 公開ゾーンを使う。
+DynamoDB PITRを有効にする。本番は空で開始し、新しい暗号鍵とPasskeyを使う。

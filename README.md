@@ -2,7 +2,7 @@
 
 ブラウザですぐ書き始め、人間とAIが秘密URLで同じMarkdown本文を扱うメモ帳。
 入力・メモの切り替えを中心にしたVueアプリと、Web/MCP共通の保存APIを実装しています。
-AWSへのデプロイはまだ行っていません。
+公開先：[memo.anipopina.com](https://memo.anipopina.com/)。本体はAWS東京リージョンへデプロイ済みです。
 
 ## 起動
 
