@@ -8,6 +8,7 @@ import { EditorState } from '@tiptap/pm/state';
 import { parseMarkdown } from '../../core/src/markdown';
 import { MemoLine } from './memo-line';
 import { liveLinksPlugin } from './live-links';
+import { pasteClipboard, serializeClipboard } from './clipboard';
 const LiveLink = Link.extend({
   addProseMirrorPlugins() {
     return [...(this.parent?.() ?? []), liveLinksPlugin()];
@@ -44,11 +45,15 @@ export function createMemoEditor(options: {
         'aria-multiline': 'true',
         spellcheck: 'false',
       },
-      handlePaste: (_view, event) => {
+      clipboardTextSerializer: (slice, view) =>
+        serializeClipboard(slice, view.state),
+      handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain');
         if (text === undefined) return false;
         event.preventDefault();
-        return editor.commands.insertContent(parseMarkdown(text).content ?? []);
+        if (!text) return true;
+        view.dispatch(pasteClipboard(text, view.state));
+        return true;
       },
       handleClick: (_view, position, event) => {
         const anchor = (event.target as HTMLElement).closest('a');
