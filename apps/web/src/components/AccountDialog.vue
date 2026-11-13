@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaterialIcon from './MaterialIcon.vue';
 import { shallowRef, useTemplateRef } from 'vue';
 import {
   startRegistration,
@@ -138,7 +139,7 @@ defineExpose({ open });
         :disabled="busy"
         @click="dialog?.close()"
       >
-        ×
+        <MaterialIcon name="close" />
       </button>
     </div>
     <template v-if="!signedIn">
@@ -166,16 +167,22 @@ defineExpose({ open });
             </div>
             <button
               v-if="credentials.length > 1"
-              class="quiet"
+              class="quiet icon-button danger"
+              aria-label="無効化"
+              title="無効化"
               :disabled="busy"
               @click="confirming = credential.id"
             >
-              無効化
+              <MaterialIcon name="delete" />
             </button>
           </div>
           <div v-if="confirming === credential.id" class="revoke-confirm">
             <p class="hint">このPasskeyでログインできなくなります。</p>
-            <button :disabled="busy" @click="revoke(credential.id)">
+            <button
+              class="danger"
+              :disabled="busy"
+              @click="revoke(credential.id)"
+            >
               無効化する</button
             ><button class="quiet" :disabled="busy" @click="confirming = null">
               やめる
@@ -201,16 +208,26 @@ defineExpose({ open });
     </form>
     <template v-if="signedIn">
       <p v-if="added" role="status">Passkeyを追加しました。</p>
-      <button class="quiet wide" :disabled="busy" @click="logout">
-        ログアウト
-      </button>
+      <div class="account-session">
+        <button class="danger wide" :disabled="busy" @click="logout">
+          ログアウト
+        </button>
+      </div>
     </template>
-    <p v-else class="hint">ログインするとメモ一覧を端末間で共有できます。</p>
+    <p v-else class="hint">ログインするとメモリストを端末間で共有できます。</p>
     <p v-if="busy" role="status" class="hint">確認中…</p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
   </dialog>
 </template>
 <style scoped>
+.account-session {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.account-session .wide {
+  margin-top: 0;
+}
 .passkey-title {
   font-size: 14px;
   font-weight: 500;

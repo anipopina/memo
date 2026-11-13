@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaterialIcon from './MaterialIcon.vue';
 import { shallowRef } from 'vue';
 import type { NoteReference } from '../api';
 const { items, selected, signedIn, busy } = defineProps<{
@@ -11,7 +12,6 @@ const emit = defineEmits<{
   select: [token: string];
   create: [];
   add: [url: string];
-  remove: [token: string];
   account: [];
   close: [];
 }>();
@@ -25,15 +25,15 @@ function add() {
 }
 </script>
 <template>
-  <aside class="note-list" aria-label="メモ一覧">
+  <aside class="note-list" aria-label="メモリスト">
     <div class="list-heading">
-      <span>メモ</span
+      <span class="app-name">memo</span
       ><button
         class="quiet list-close"
-        aria-label="一覧を閉じる"
+        aria-label="リストを閉じる"
         @click="emit('close')"
       >
-        ×
+        <MaterialIcon name="close" />
       </button>
     </div>
     <template v-if="signedIn">
@@ -43,7 +43,7 @@ function add() {
         title="新しいメモ（Ctrl/⌘＋Alt＋N）"
         @click="emit('create')"
       >
-        <span>＋</span> 新しいメモ
+        <MaterialIcon name="add" /> 新しいメモ
       </button>
       <nav aria-label="自分のメモ">
         <div
@@ -59,14 +59,6 @@ function add() {
           >
             {{ item.title }}
           </button>
-          <button
-            class="remove-note quiet"
-            aria-label="一覧から外す"
-            :title="`${item.title}を一覧から外す`"
-            @click="emit('remove', item.token)"
-          >
-            ×
-          </button>
         </div>
       </nav>
       <div class="list-bottom">
@@ -78,16 +70,16 @@ function add() {
               required
               placeholder="https://…"
               aria-label="追加するメモのURL" /></label
-          ><button type="submit" class="wide">一覧に追加</button>
+          ><button type="submit" class="wide">リストに追加</button>
         </form>
-        <button v-else class="quiet add-existing" @click="adding = true">
-          URLから追加
+        <button v-else class="add-existing" @click="adding = true">
+          <MaterialIcon name="add" /> URLでメモを追加
         </button>
       </div>
     </template>
     <div v-else class="guest-list">
       <button class="wide" @click="emit('account')">ログイン</button>
-      <p class="hint">メモ一覧を端末間で共有</p>
+      <p class="hint">メモリストを端末間で共有</p>
     </div>
     <a
       class="site-link"

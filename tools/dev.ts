@@ -15,12 +15,17 @@ if (!existsSync(keyFile))
 const repo = new SqliteRepository(`${directory}/memo.sqlite`),
   vaultKey = readFileSync(keyFile, 'utf8').trim();
 const handlers = new Map<string, ReturnType<typeof createApp>>();
+const originsByHost = new Map<string, string>();
 const api = serve({
   hostname: '127.0.0.1',
   port: 0,
   fetch: (request) => {
-    const origin = request.headers.get('Origin') ?? new URL(request.url).origin;
-    const app = handlers.get(origin);
+    // HTTPS terminates at Tailscale; same-origin GETs may omit Origin.
+    // Resolve only configured hosts, preserving their public scheme.
+    const origin =
+      request.headers.get('Origin') ??
+      originsByHost.get(new URL(request.url).host);
+    const app = origin ? handlers.get(origin) : undefined;
     return app
       ? app.fetch(request)
       : new Response('Forbidden', { status: 403 });
@@ -56,8 +61,10 @@ for (const origin of [
   `http://127.0.0.1:${web.port}`,
   'https://gtune2023.tail4432be.ts.net',
   process.env.MEMO_ORIGIN,
-].filter((value): value is string => !!value))
+].filter((value): value is string => !!value)) {
   handlers.set(origin, createApp(repo, { origin, vaultKey }));
+  originsByHost.set(new URL(origin).host, origin);
+}
 console.info(`Local: http://127.0.0.1:${web.port}`);
 async function close() {
   await server.close();

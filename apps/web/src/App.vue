@@ -17,10 +17,12 @@ import { serializeMarkdown } from '../../../packages/core/src/markdown';
 import { isNoteToken } from '../../../packages/core/src/note';
 import { api, ApiError, type NoteReference } from './api';
 import { useNote } from './useNote';
+import MaterialIcon from './components/MaterialIcon.vue';
 import NoteList from './components/NoteList.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import ShareDialog from './components/ShareDialog.vue';
 import EditorOverlays from './components/EditorOverlays.vue';
+import RemoveNoteDialog from './components/RemoveNoteDialog.vue';
 const signedIn = shallowRef(false),
   accountId = shallowRef(''),
   items = shallowRef<NoteReference[]>([]);
@@ -34,6 +36,8 @@ const accountDialog =
   useTemplateRef<InstanceType<typeof AccountDialog>>('accountDialog');
 const shareDialog =
   useTemplateRef<InstanceType<typeof ShareDialog>>('shareDialog');
+const removeNoteDialog =
+  useTemplateRef<InstanceType<typeof RemoveNoteDialog>>('removeNoteDialog');
 const note = useNote((text, reset) => {
   if (reset) loadMarkdown(editor, text);
   else applyRemoteMarkdown(editor, text);
@@ -70,28 +74,20 @@ const saveLabel = computed(
 const inList = computed(() =>
   items.value.some((item) => item.token === note.state.token),
 );
-const visibleItems = computed(() =>
-  items.value.map((item) =>
-    item.token === note.state.token
-      ? {
-          ...item,
-          title:
-            note.state.content
-              .split(/\r?\n/)
-              .find((line) => line.trim())
-              ?.trim()
-              .slice(0, 100) || '無題',
-        }
-      : item,
-  ),
-);
 const title = computed(
   () =>
     note.state.content
       .split(/\r?\n/)
       .find((line) => line.trim())
       ?.trim()
-      .slice(0, 60) || 'memo',
+      .slice(0, 100) || '無題',
+);
+const visibleItems = computed(() =>
+  items.value.map((item) =>
+    note.state.ready && item.token === note.state.token
+      ? { ...item, title: title.value }
+      : item,
+  ),
 );
 function topToken() {
   const key = signedIn.value ? `memo.last.${accountId.value}` : 'memo.current';
@@ -202,11 +198,12 @@ async function add(url?: string) {
   }
 }
 async function remove(token: string) {
+  busy.value = true;
   try {
     await api(`/list/${token}`, undefined, 'DELETE');
     await refreshList();
-  } catch {
-    message.value = '一覧から外せませんでした。';
+  } finally {
+    busy.value = false;
   }
 }
 async function share() {
@@ -350,7 +347,7 @@ onBeforeUnmount(() => {
     <button
       v-if="sidebar"
       class="drawer-backdrop"
-      aria-label="一覧を閉じる"
+      aria-label="リストを閉じる"
       @click="sidebar = false"
     ></button>
     <NoteList
@@ -362,7 +359,6 @@ onBeforeUnmount(() => {
       @select="select"
       @create="create"
       @add="add"
-      @remove="remove"
       @account="accountDialog?.open()"
       @close="toggleList"
     />
@@ -371,31 +367,29 @@ onBeforeUnmount(() => {
         <div class="header-left">
           <button
             class="quiet list-toggle"
-            aria-label="メモ一覧"
-            title="メモ一覧（Ctrl/⌘＋\）"
+            aria-label="メモリスト"
+            title="メモリスト（Ctrl/⌘＋\）"
             :aria-expanded="sidebar"
             @click="toggleList"
           >
-            ☰</button
-          ><span class="app-name">memo</span
+            <MaterialIcon name="menu" /></button
           ><span class="save-state" role="status">{{ saveLabel }}</span>
         </div>
         <div class="header-right">
           <button
-            v-if="signedIn && note.state.ready && !inList"
-            class="quiet"
-            :disabled="busy"
-            @click="add()"
+            v-if="signedIn && note.state.ready"
+            :disabled="busy || navigating"
+            @click="
+              inList ? removeNoteDialog?.open(note.state.token, title) : add()
+            "
           >
-            一覧に追加</button
-          ><button
-            class="quiet"
+            {{ inList ? 'リストから削除' : 'リストに追加' }}</button><button
             :disabled="busy || !note.state.ready || note.state.composing"
             @click="share"
           >
             共有</button
           ><button
-            class="quiet account-button"
+            class="account-button"
             aria-label="アカウント"
             @click="accountDialog?.open()"
           >
@@ -409,7 +403,7 @@ onBeforeUnmount(() => {
           aria-label="通知を閉じる"
           @click="message = ''"
         >
-          ×
+          <MaterialIcon name="close" />
         </button>
       </div>
       <div v-if="note.state.adjusted" class="notice">
@@ -420,7 +414,7 @@ onBeforeUnmount(() => {
           aria-label="調整通知を閉じる"
           @click="note.state.adjusted = false"
         >
-          ×
+          <MaterialIcon name="close" />
         </button>
       </div>
       <main class="document-scroll" :aria-label="title">
@@ -440,14 +434,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </main>
-      <footer v-if="!sidebar" class="app-footer">
-        <a
-          href="https://anipopina.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          >anipopina.com</a
-        >
-      </footer>
     </div>
     <EditorOverlays :editor="editor" :composing="note.state.composing" />
     <AccountDialog
@@ -456,6 +442,11 @@ onBeforeUnmount(() => {
       @authenticated="authenticated"
       @closed="note.state.ready && editor.view.focus()"
       :sign-out="logout"
+    />
+    <RemoveNoteDialog
+      ref="removeNoteDialog"
+      :remove="remove"
+      @closed="note.state.ready && editor.view.focus()"
     />
     <ShareDialog
       ref="shareDialog"

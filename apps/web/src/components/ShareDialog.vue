@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaterialIcon from './MaterialIcon.vue';
 import { computed, shallowRef, useTemplateRef } from 'vue';
 const { token } = defineProps<{ token: string }>();
 const emit = defineEmits<{ closed: [] }>();
@@ -25,7 +26,7 @@ defineExpose({ open });
     <div class="dialog-heading">
       <h2 id="share-title">共有</h2>
       <button class="quiet" aria-label="閉じる" @click="dialog?.close()">
-        ×
+        <MaterialIcon name="close" />
       </button>
     </div>
     <label

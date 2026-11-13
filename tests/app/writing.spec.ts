@@ -34,7 +34,13 @@ test('writing persists, sharing works and direct unknown URLs do not create note
   ).toBeVisible();
   await expect(editor).toBeHidden();
   await expect(
-    page.getByRole('link', { name: 'anipopina.com' }),
+    page.getByRole('link', { name: 'anipopina.com', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'メモリスト', exact: true }).click();
+  await expect(
+    page
+      .getByRole('complementary', { name: 'メモリスト', exact: true })
+      .getByRole('link', { name: 'anipopina.com', exact: true }),
   ).toHaveAttribute('rel', 'noopener noreferrer');
 });
 
@@ -119,17 +125,93 @@ test('resident passkey login carries the note into an account and list removal p
     .getByRole('button', { name: 'アカウントを作る', exact: true })
     .click();
   await expect(page.getByRole('dialog')).toBeHidden({ timeout: 15000 });
-  const toggle = page.getByRole('button', { name: 'メモ一覧', exact: true });
+  const toggle = page.getByRole('button', { name: 'メモリスト', exact: true });
   if ((await toggle.getAttribute('aria-expanded')) !== 'true')
     await toggle.click();
   await expect(
     page.getByRole('button', { name: 'account memo', exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: '一覧から外す', exact: true }).click();
+  const originalUrl = page.url();
+  const remove = page.getByRole('button', {
+    name: 'リストから削除',
+    exact: true,
+  });
+  const memoList = page.getByRole('complementary', {
+    name: 'メモリスト',
+    exact: true,
+  });
   await expect(
-    page.getByRole('button', { name: 'account memo', exact: true }),
+    memoList.getByRole('button', { name: 'リストから削除', exact: true }),
+  ).toHaveCount(0);
+  let attempts = 0;
+  await page.route('**/api/list/*', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.continue();
+    attempts++;
+    if (attempts === 1)
+      return route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'unavailable' }),
+      });
+    await route.continue();
+  });
+  await remove.click();
+  const confirmation = page.getByRole('dialog', {
+    name: 'リストから削除',
+    exact: true,
+  });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText('account memo');
+  await expect(confirmation).toContainText('再び開くにはこのメモのURLが必要');
+  await expect(
+    confirmation.getByRole('button', { name: 'キャンセル', exact: true }),
+  ).toBeFocused();
+  await confirmation
+    .getByRole('button', { name: 'キャンセル', exact: true })
+    .click();
+  await expect(confirmation).toBeHidden();
+  expect(attempts).toBe(0);
+  await expect(
+    memoList.getByRole('button', { name: 'account memo', exact: true }),
+  ).toBeVisible();
+  await remove.click();
+  await confirmation
+    .getByRole('button', { name: '削除する', exact: true })
+    .click();
+  await expect(confirmation.getByRole('alert')).toHaveText(
+    'リストから削除できませんでした。接続を確認してください。',
+  );
+  await expect(
+    memoList.getByRole('button', { name: 'account memo', exact: true }),
+  ).toHaveCount(1);
+  await confirmation
+    .getByRole('button', { name: '削除する', exact: true })
+    .click();
+  await expect(confirmation).toBeHidden();
+  await expect(
+    memoList.getByRole('button', { name: 'account memo', exact: true }),
   ).toHaveCount(0);
   await expect(editor).toHaveText('account memo');
+  expect(page.url()).toBe(originalUrl);
+  const add = page.getByRole('button', { name: 'リストに追加', exact: true });
+  await expect(add).toBeVisible();
+  await page.reload();
+  await expect(editor).toHaveText('account memo');
+  await expect(add).toBeVisible();
+  await expect(
+    memoList.getByRole('button', { name: 'account memo', exact: true }),
+  ).toHaveCount(0);
+  await add.click();
+  await expect(remove).toBeVisible();
+  await expect(
+    memoList.getByRole('button', { name: 'account memo', exact: true }),
+  ).toBeVisible();
+  await remove.click();
+  await confirmation
+    .getByRole('button', { name: '削除する', exact: true })
+    .click();
+  await expect(confirmation).toBeHidden();
+  await expect(add).toBeVisible();
   await page.getByRole('button', { name: 'アカウント', exact: true }).click();
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
   await page.getByRole('button', { name: 'アカウント', exact: true }).click();
@@ -217,9 +299,17 @@ test('list controls follow the caret and the link action sits beside the selecte
   await page.keyboard.press('Enter');
   await page.keyboard.insertText('child');
   const indent = page.getByRole('button', { name: '字下げ', exact: true });
-  await expect(indent).toBeEnabled();
-  if (testInfo.project.use.hasTouch) await indent.tap();
-  else await indent.click();
+  if (testInfo.project.use.hasTouch) {
+    await expect(indent).toBeVisible();
+    await expect(indent).toBeEnabled();
+    await indent.tap();
+  } else {
+    await expect(indent).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: '字上げ', exact: true }),
+    ).toBeHidden();
+    await page.keyboard.press('Tab');
+  }
   await expect(editor).toBeFocused();
   await expect(editor.locator('.list-line').last()).toHaveAttribute(
     'data-list-depth',
@@ -239,4 +329,84 @@ test('list controls follow the caret and the link action sits beside the selecte
   await expect(
     page.getByRole('link', { name: 'リンクを別タブで開く', exact: true }),
   ).toHaveAttribute('href', 'https://example.com');
+});
+
+test('known memo names survive delayed loading and empty memo confirmation uses the list title', async ({
+  page,
+}) => {
+  const first = randomBytes(16).toString('base64url');
+  const second = randomBytes(16).toString('base64url');
+  await page.route('**/api/session', (route) =>
+    route.fulfill({ json: { signedIn: true, account: 'title-test' } }),
+  );
+  await page.route('**/api/list', (route) =>
+    route.fulfill({
+      json: [
+        { token: first, title: '最初のメモ', addedAt: 1 },
+        { token: second, title: '既知のメモ名', addedAt: 2 },
+      ],
+    }),
+  );
+  await page.route(`**/api/notes/${first}`, (route) =>
+    route.fulfill({ json: { content: '最初のメモ', version: 1 } }),
+  );
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requested!: () => void;
+  const requestedNote = new Promise<void>((resolve) => {
+    requested = resolve;
+  });
+  await page.route(`**/api/notes/${second}`, async (route) => {
+    requested();
+    await loaded;
+    await route.fulfill({ json: { content: '', version: 1 } });
+  });
+  await page.goto(`/${first}`);
+  const editor = page.getByRole('textbox', editorName);
+  await expect(editor).toHaveText('最初のメモ');
+  const toggle = page.getByRole('button', { name: 'メモリスト', exact: true });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true')
+    await toggle.click();
+  const list = page.getByRole('complementary', {
+    name: 'メモリスト',
+    exact: true,
+  });
+  await list.getByRole('button', { name: '既知のメモ名', exact: true }).click();
+  await requestedNote;
+  try {
+    await expect(
+      list.getByRole('button', { name: '既知のメモ名', exact: true }),
+    ).toBeVisible();
+    await expect(
+      list.getByRole('button', { name: '無題', exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(editor).toBeVisible();
+  await expect(editor).toHaveText('');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true')
+    await toggle.click();
+  await expect(
+    list.getByRole('button', { name: '無題', exact: true }),
+  ).toBeVisible();
+  if (
+    (await page
+      .getByRole('button', { name: 'リストを閉じる', exact: true })
+      .count()) > 0 &&
+    (await page.locator('.drawer-backdrop').isVisible())
+  )
+    await list
+      .getByRole('button', { name: 'リストを閉じる', exact: true })
+      .click();
+  await page
+    .getByRole('button', { name: 'リストから削除', exact: true })
+    .click();
+  const confirmation = page.getByRole('dialog', {
+    name: 'リストから削除',
+    exact: true,
+  });
+  await expect(confirmation.locator('.note-title')).toHaveText('無題');
 });

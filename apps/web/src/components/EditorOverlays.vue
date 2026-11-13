@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MaterialIcon from './MaterialIcon.vue';
 import { onBeforeUnmount, onMounted, shallowRef, watch, nextTick } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
 import { getMarkRange } from '@tiptap/core';
@@ -116,20 +117,20 @@ onBeforeUnmount(() => {
     @mousedown.prevent
   >
     <button
-      :disabled="!canIndent"
-      title="字下げ（Tab）"
-      aria-label="字下げ"
-      @click="shift(1)"
-    >
-      字下げ
-    </button>
-    <button
       :disabled="!canOutdent"
       title="字上げ（Shift＋Tab）"
       aria-label="字上げ"
       @click="shift(-1)"
     >
-      字上げ
+      <MaterialIcon name="keyboardTabRtl" />
+    </button>
+    <button
+      :disabled="!canIndent"
+      title="字下げ（Tab）"
+      aria-label="字下げ"
+      @click="shift(1)"
+    >
+      <MaterialIcon name="keyboardTab" />
     </button>
   </div>
   <a
@@ -144,6 +145,6 @@ onBeforeUnmount(() => {
     @pointerdown.prevent
     @mousedown.prevent
     @blur="update"
-    >↗</a
-  >
+    ><MaterialIcon name="openInNew"
+  /></a>
 </template>
