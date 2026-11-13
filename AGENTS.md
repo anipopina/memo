@@ -68,9 +68,10 @@
 この章には本プロジェクトにのみ適用する方針を、決まったものから記載します。未記載の項目を決定済みと扱わないでください。
 
 - 目的・対象ユーザー：個人・少人数向けの、秘密URLで読み書きできるWebメモ帳。アカウントは一覧の同期にのみ使用する。
-- 採用スタック・主要な判断理由：TypeScript、Vue 3（Composition API）、Vite。Tiptap 3と行ベースの原文保持を先行検証中。Hono・Lambda・API Gateway HTTP API・DynamoDB・CloudFront・S3を本体の予定構成とし、固定費と運用データを抑える。詳細は [設計と決定事項](docs/design.md)。
-- 主要なディレクトリと責務：`spikes/editor/` はエディタ検証台、`spikes/mcp/` はメモリストアによるローカルMCP、`packages/core/` は本文変換・統合・共通検証、`tests/` はユニット・実通信・ブラウザ検証、`docs/` は仕様と判断・検証の記録。検証コードを本番実装済みと扱わない。
+- 採用スタック・主要な判断理由：TypeScript、Vue 3（Composition API）、Vite。Tiptap 3と行ベースの原文保持を採用。Hono・SimpleWebAuthn・Lambda・API Gateway HTTP API・DynamoDB・CloudFront・S3を本体の構成とし、固定費と運用データを抑える。詳細は [設計と決定事項](docs/design.md)。
+- 主要なディレクトリと責務：`apps/web/` は本体画面・下書き・同期、`apps/server/` はHTTP/MCP・認証・保存、`packages/editor/` は共通エディタ、`infra/` はCDK。`spikes/editor/` はエディタ検証台、`spikes/mcp/` はメモリストアによるローカルMCP、`packages/core/` は本文変換・統合・共通検証、`tests/` はユニット・実通信・ブラウザ検証、`docs/` は仕様と判断・検証の記録。検証台と本体を区別し、AWS構成コードがあることをデプロイ済みと扱わない。
 - 起動・検証コマンド：正本は [package.json](package.json) のscripts。`pnpm dev`、`pnpm dev:mcp`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm test:browser`、`pnpm build`、`pnpm format:check`。pnpmの版はpackageManagerとロックファイルに従う。
+- 操作性の優先順位：使い慣れた人が書き込みやすいことを最優先し、初回説明や管理UIを本文の前に増やさない。
 - 対象環境：iPhone SafariとWindows Chrome。AIクライアントはChatGPTを優先する。Playwright WebKitの結果をiPhone実機検証と同一視しない。
 - 公開先・運用上の制約：`memo.anipopina.com` を予定。顧客管理KMS鍵や常時稼働サーバーを追加せず、Lambda環境変数の鍵＋AES-256-GCMを予定。公開・AWSリソース作成・コミットは明示的な依頼なしに行わない。
 - 競合方針：手動マージ画面を設けず、差分を自動統合する。重なった範囲は保存する側を優先し、一部の変更が失われ得ることをユーザーは許容している。詳しい規則は設計文書を参照する。

@@ -20,3 +20,6 @@ cdk.out/
 # ブラウザテストの生成物
 test-results/
 playwright-report/
+
+# ローカルの本体データと暗号鍵
+.memo/

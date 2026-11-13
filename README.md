@@ -1,9 +1,10 @@
 # memo
 
 ブラウザですぐ書き始め、人間とAIが秘密URLで同じMarkdown本文を扱うメモ帳。
-現在は本体実装前の先行検証段階です。アカウント・永続保存・AWS環境はまだありません。
+入力・メモの切り替えを中心にしたVueアプリと、Web/MCP共通の保存APIを実装しています。
+AWSへのデプロイはまだ行っていません。
 
-## ローカルで検証する
+## 起動
 
 Node.js 24と、[package.json](package.json) に固定したpnpmを使用します。
 
@@ -12,23 +13,20 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-表示されるローカルURLでエディタ、Markdownの往復、差分統合を確認できます。
-画面は開発用の検証台で、本体のUIではありません。入力内容は保存されません。
+PCでは `http://localhost:5173/` を開いてください。Passkeyのローカル検証にもlocalhostを使います。
+本体のWeb画面とAPIがまとめて起動し、入力はローカルのSQLiteへ保存されます。
+起動中の旧検証サーバーがある場合は、停止してから再起動してください。
 
-iPhoneからは、Tailscale ServeのHTTPS転送先を `http://127.0.0.1:5173` にすると、
-`https://gtune2023.tail4432be.ts.net/` でアクセスできます。このホスト名はViteで許可済みです。
-HTTPSとWebSocketの転送はTailscale Serve側で行い、ViteはローカルHTTPで起動します。
+ローカルデータと暗号鍵は `.memo/` に作成します。このディレクトリはGit管理しません。
+保存内容を保つ場合は、サーバー停止中にディレクトリ全体を保管してください。
+ローカルと本番のデータ・Passkeyは別のものです。
 
-MCPの先行検証サーバーは別ターミナルで起動します。
+Tailscale ServeのHTTPS転送先を `http://127.0.0.1:5173` にすると、
+iPhoneから `https://gtune2023.tail4432be.ts.net/` で利用できます。このホストは許可済みです。
+HTTPSとWebSocketの転送はTailscale Serve側で行います。
 
-```bash
-pnpm dev:mcp
-```
-
-ローカル専用の固定サンプルは
-`http://127.0.0.1:8787/mcp/AAAAAAAAAAAAAAAAAAAAAA` です。
-再起動すると内容は失われます。実データを入れず、外部公開しないでください。
-ChatGPTからの接続確認には別途HTTPS環境が必要です。
+従来の検証画面は `pnpm dev:spike`、MCP単体のメモリストア検証は `pnpm dev:mcp` で起動できます。
+これらの検証用サーバーは永続化・公開用の構成ではありません。
 
 ## 品質確認
 
@@ -38,24 +36,24 @@ pnpm lint
 pnpm test
 pnpm build
 pnpm format:check
-pnpm exec playwright install chromium webkit
+pnpm test:app
 pnpm test:browser
 ```
 
-Linuxでブラウザ用OSライブラリが不足する場合は
-`pnpm exec playwright install-deps chromium webkit` を実行します。管理者権限が必要です。
+ブラウザが未導入の場合は `pnpm exec playwright install chromium webkit` を実行します。
+LinuxのOSライブラリが不足する場合は `pnpm exec playwright install-deps chromium webkit` が必要です。
 MCP統合テストとブラウザテストにはlocalhostでの待受権限が必要です。
 
-共有スキルを復元する場合は `python3 tools/restore-skills.py` を実行します。
-同梱アーカイブのハッシュを検証し、既存の異なるファイルは上書きしません。
-管理環境で `.agents` が読み取り専用なら、環境提供の同じ版を利用するか、
-`python3 tools/restore-skills.py <復元先>` で書き込み可能な場所へ復元してください。
+AWS構成の生成・確認は [運用と公開準備](docs/operations.md) を参照してください。
+共有スキルは `python3 tools/restore-skills.py` で同梱アーカイブから復元できます。
+環境管理の `.agents/` が読み取り専用なら、復元先を引数で指定してください。
 
 ## 資料
 
 - [機能仕様 v0.2](docs/spec-v0.2.md)：元の仕様。`tmp/` の原本も保持
-- [設計と決定事項](docs/design.md)：合意した軽量構成、競合処理、費用・公開境界
-- [先行検証の記録](docs/validation.md)：確認結果、未確認事項、本体への移行条件
+- [設計と決定事項](docs/design.md)：合意した構成・操作・競合処理
+- [検証記録](docs/validation.md)：確認結果と未確認事項
+- [運用と公開準備](docs/operations.md)：ローカルデータ、AWS構成、公開前の確認
 - [開発ルール](AGENTS.md)、[スキル管理](skills.md)
 
-本番公開・コミットはユーザーが管理します。秘密値をリポジトリへ保存しません。
+コミット・AWSリソース作成・本番公開はユーザーの明示的な依頼後に行います。

@@ -7,6 +7,8 @@ export default ts.config(
   {
     ignores: [
       'dist/**',
+      'cdk.out/**',
+      '.memo/**',
       'node_modules/**',
       'tmp/**',
       'test-results/**',
@@ -18,6 +20,7 @@ export default ts.config(
   ...vue.configs['flat/essential'],
   {
     files: ['**/*.vue'],
+    rules: { 'no-undef': 'off' },
     languageOptions: {
       parser: vueParser,
       parserOptions: { parser: ts.parser, extraFileExtensions: ['.vue'] },

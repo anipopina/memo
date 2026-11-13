@@ -4,3 +4,6 @@ dist
 tmp
 test-results
 playwright-report
+
+.memo
+cdk.out

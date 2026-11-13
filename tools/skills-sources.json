@@ -50,6 +50,74 @@
       "license_document": "tools/skill-snapshots/frontend-design.tar.gz!/LICENSE.txt",
       "local_modifications": false,
       "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "aws-cdk",
+      "purpose": "CDKによるAWS構成コード",
+      "source_url": "https://github.com/aws/agent-toolkit-for-aws",
+      "source_path": "skills/core-skills/aws-cdk",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "9e5b00502aa9eac7218f3d78983be4dedf4d266c4f303dcbb5e30e186c2751d5"
+      },
+      "archive": "tools/skill-snapshots/aws-cdk.tar.gz",
+      "destination": ".agents/skills/aws-cdk",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "Apache-2.0",
+      "license_document": "tools/skill-snapshots/aws-cdk.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "aws-serverless",
+      "purpose": "Lambda・HTTP APIの構成",
+      "source_url": "https://github.com/aws/agent-toolkit-for-aws",
+      "source_path": "skills/core-skills/aws-serverless",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "757b5c4ee66e17d8ea1ad223b6f000f3f0082b2ca6349cd6f2debd686ce3d3c8"
+      },
+      "archive": "tools/skill-snapshots/aws-serverless.tar.gz",
+      "destination": ".agents/skills/aws-serverless",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "Apache-2.0",
+      "license_document": "tools/skill-snapshots/aws-serverless.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "aws-database",
+      "purpose": "DynamoDBの保存モデル",
+      "source_url": "https://github.com/aws/agent-toolkit-for-aws",
+      "source_path": "skills/core-skills/aws-database",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "93949cf4193edf05d23a313960e0524444482730ffe5c8259d901204fdd40a9a"
+      },
+      "archive": "tools/skill-snapshots/aws-database.tar.gz",
+      "destination": ".agents/skills/aws-database",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "Apache-2.0",
+      "license_document": "tools/skill-snapshots/aws-database.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
+    },
+    {
+      "name": "aws-sdk-js-v3-usage",
+      "purpose": "DynamoDB SDKの利用",
+      "source_url": "https://github.com/aws/agent-toolkit-for-aws",
+      "source_path": "skills/core-skills/aws-sdk-js-v3-usage",
+      "version": {
+        "kind": "environment-snapshot-sha256",
+        "sha256": "4c6e78caf991c79064d0e7d454ebc0429159ad005c3b548453d9a50245aa1cbd"
+      },
+      "archive": "tools/skill-snapshots/aws-sdk-js-v3-usage.tar.gz",
+      "destination": ".agents/skills/aws-sdk-js-v3-usage",
+      "management": "bundled-archive-restored-on-demand; environment-provided in current session",
+      "license": "Apache-2.0",
+      "license_document": "tools/skill-snapshots/aws-sdk-js-v3-usage.tar.gz!/LICENSE",
+      "local_modifications": false,
+      "upstream_commit": "not verified; bundled bytes define the adopted version"
     }
   ]
 }

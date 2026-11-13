@@ -8,7 +8,7 @@ export default defineConfig({
     { name: 'webkit-mobile', use: { ...devices['iPhone 13'] } },
   ],
   webServer: {
-    command: 'pnpm dev --port 0',
+    command: 'pnpm dev:spike --port 0',
     wait: { stdout: /Local:.*127\.0\.0\.1:(?<memo_test_port>\d+)/ },
     timeout: 20000,
   },
