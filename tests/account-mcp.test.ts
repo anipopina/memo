@@ -105,7 +105,8 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
     await client.connect(
       new StreamableHTTPClientTransport(url, { authProvider: provider }),
     );
-    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual([
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name).sort()).toEqual([
       'append_note',
       'create_note',
       'list_notes',
@@ -113,6 +114,25 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
       'search_notes',
       'write_note',
     ]);
+    expect(
+      tools.find((tool) => tool.name === 'read_note')?.outputSchema,
+    ).toMatchObject({
+      type: 'object',
+      properties: {
+        token: { type: 'string' },
+        url: { type: 'string' },
+        mcp_url: { type: 'string' },
+        content: { type: 'string' },
+        version: { type: 'integer' },
+      },
+      required: expect.arrayContaining([
+        'token',
+        'url',
+        'mcp_url',
+        'content',
+        'version',
+      ]),
+    });
     const call = async (name: string, args: Record<string, unknown>) => {
       const result = await client.callTool({ name, arguments: args });
       expect(result.isError).not.toBe(true);
@@ -149,8 +169,29 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
     expect(
       (await call('search_notes', { query: 'other-private' })).notes,
     ).toEqual([]);
-    const result = await call('read_note', { token: created.token });
-    expect(result.version).toBe(1);
+    const expectRead = async (
+      token: string,
+      content: string,
+      version: number,
+    ) => {
+      const result = await client.callTool({
+        name: 'read_note',
+        arguments: { token },
+      });
+      const expected = {
+        token,
+        url: `${origin}/${token}`,
+        mcp_url: `${origin}/mcp/${token}`,
+        content,
+        version,
+      };
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toEqual(expected);
+      expect(result.content).toEqual([
+        { type: 'text', text: JSON.stringify(expected) },
+      ]);
+    };
+    await expectRead(created.token, '決定事項\n一緒にテスト ABC', 1);
     await call('write_note', {
       token: created.token,
       content: '改訂',
@@ -177,9 +218,7 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
     };
     await call('append_note', append);
     await call('append_note', append);
-    expect((await call('read_note', { token: created.token })).content).toBe(
-      '改訂\n追記',
-    );
+    await expectRead(created.token, '改訂\n追記', 3);
     for (const name of ['read_note', 'write_note', 'append_note']) {
       expect(
         (
@@ -201,6 +240,7 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
     }
     const second = randomBytes(16).toString('base64url');
     await notes.create(second, '別の本文', 'alice');
+    await expectRead(second, '別の本文', 1);
     const firstPage = await call('list_notes', { limit: 1 });
     expect(firstPage.notes).toHaveLength(1);
     expect(firstPage.next_cursor).toBeTruthy();

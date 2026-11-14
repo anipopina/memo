@@ -26,13 +26,17 @@ export async function accountMcpRequest(
   if (request.method !== 'POST')
     return new Response(null, { status: 405, headers: { Allow: 'POST' } });
   const server = new McpServer({ name: 'memo-account', version: '1.0.0' });
-  const reply = async (action: () => Promise<unknown>) => {
+  const reply = async (
+    action: () => Promise<Record<string, unknown>>,
+    { structured = false } = {},
+  ) => {
     try {
       // Recheck revocation on tools/call as well as the transport request.
       if (!(await oauth.access(raw!))) throw new AppError('unauthorized', 401);
       const value = await action();
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(value) }],
+        ...(structured ? { structuredContent: value } : {}),
       };
     } catch (error) {
       return {
@@ -134,18 +138,28 @@ export async function accountMcpRequest(
         description:
           'Read a note currently in your account list and its version.',
         inputSchema: z.object({ token }).strict(),
+        outputSchema: z.object({
+          token,
+          url: z.url(),
+          mcp_url: z.url(),
+          content: z.string(),
+          version: z.number().int().positive(),
+        }),
         annotations: { readOnlyHint: true },
       },
       (args) =>
-        reply(async () => {
-          await notes.requireMember(access.account, args.token);
-          const note = await notes.read(args.token);
-          return {
-            ...urls(args.token),
-            content: note.content,
-            version: note.version,
-          };
-        }),
+        reply(
+          async () => {
+            await notes.requireMember(access.account, args.token);
+            const note = await notes.read(args.token);
+            return {
+              ...urls(args.token),
+              content: note.content,
+              version: note.version,
+            };
+          },
+          { structured: true },
+        ),
     );
   }
   if (access.scopes.includes('memo:create'))
