@@ -384,16 +384,20 @@ onBeforeUnmount(() => {
             "
           >
             {{ inList ? 'リストから削除' : 'リストに追加' }}</button><button
+            class="header-icon-button"
+            aria-label="共有"
+            title="共有"
             :disabled="busy || !note.state.ready || note.state.composing"
             @click="share"
           >
-            共有</button
+            <MaterialIcon name="iosShare" /></button
           ><button
-            class="account-button"
+            class="account-button header-icon-button"
             aria-label="アカウント"
+            :title="signedIn ? 'アカウント' : 'ログイン'"
             @click="accountDialog?.open()"
           >
-            {{ signedIn ? 'アカウント' : 'ログイン' }}
+            <MaterialIcon name="passkey" />
           </button>
         </div>
       </header>

@@ -63,7 +63,7 @@ test('named passkeys can be revoked, logout creates a fresh empty URL and login 
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(
     page.getByRole('button', { name: 'アカウント', exact: true }),
-  ).toHaveText('アカウント');
+  ).toHaveAttribute('title', 'アカウント');
   await page.getByRole('button', { name: 'アカウント', exact: true }).click();
   const list = page.getByRole('list', { name: 'このアカウントのPasskey' });
   await expect(list.getByText('PC', { exact: true })).toBeVisible();

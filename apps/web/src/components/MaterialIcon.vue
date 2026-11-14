@@ -7,7 +7,9 @@ defineProps<{
     | 'menu'
     | 'delete'
     | 'keyboardTabRtl'
-    | 'keyboardTab';
+    | 'keyboardTab'
+    | 'passkey'
+    | 'iosShare';
 }>();
 </script>
 <template>
@@ -44,5 +46,11 @@ defineProps<{
 }
 .icon-keyboardTab {
   --icon: url('../assets/material-symbols/keyboard_tab.svg');
+}
+.icon-passkey {
+  --icon: url('../assets/material-symbols/passkey.svg');
+}
+.icon-iosShare {
+  --icon: url('../assets/material-symbols/ios_share.svg');
 }
 </style>

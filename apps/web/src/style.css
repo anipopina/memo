@@ -167,6 +167,14 @@ button:disabled {
 .header-right button {
   font-size: 13px;
 }
+.header-right .header-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex: none;
+  padding: 0;
+}
 .list-toggle {
   width: 44px;
   font-size: 18px;
@@ -180,9 +188,8 @@ button:disabled {
   scroll-padding: 72px 0 160px;
 }
 .memo-document {
-  max-width: 840px;
   margin: 0 auto;
-  padding: 32px 64px 160px;
+  padding: 32px 48px 160px;
   min-height: 100%;
 }
 .tiptap {
