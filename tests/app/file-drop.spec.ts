@@ -130,6 +130,9 @@ test('signed-in file import appears in the memo list', async ({
     .click();
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.getByRole('status').first()).toHaveText('保存済み');
+  await expect(
+    page.getByRole('button', { name: 'リストから削除', exact: true }),
+  ).toBeEnabled();
   await drop(page, [file('import.txt', 'リストに並ぶメモ')]);
   await expect(page.getByRole('textbox', editorName)).toHaveText(
     'リストに並ぶメモ',
