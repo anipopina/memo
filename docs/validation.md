@@ -452,3 +452,10 @@ iPhone実機の本番Passkey・IME、およびChatGPTアプリからのMCP接続
   CloudFrontに `/.well-known/*` の転送と `/connect` のSPA書き換えが生成されることを確認。
 - AWSリソース作成・デプロイは未実施。公開HTTPS上でのOAuth、ChatGPTへの登録と利用、
   iPhone実機のPasskey認可は未確認。CIMDは実装せず、クライアント登録はDCRを使用する。
+
+## 公開HTTPSでの検証（2026-11-14）
+
+公開HTTPSで最新アセット、タッチ端末の16pxと `touch-action: manipulation` のCSS配信、
+OAuth discoveryと認可画面へのルーティング、未認可のアカウントMCPが401を返すことを確認した。
+メモ本文・アカウントを作成する本番テストは行っていない。
+ChatGPTによるOAuth接続、iPhone実機での拡大抑制・操作は未確認。

@@ -72,12 +72,11 @@ DynamoDB PITRは有効とする。復元履歴の保存には従量費が発生�
 CDKの配布用補助Lambdaはデプロイ時だけ使う。
 料金ゼロは保証せず、HTTP API、DynamoDB、ストレージ、配信、短期ログの従量費を対象にする。
 
-## 初回公開の記録（2026-11-13）
+## 本番環境の設定
 
-`ai-dev` で `MemoCertificate`（us-east-1）、`Memo`（ap-northeast-1）を作成した。
-既存ゾーン `Z100947420XSLWOY8HP9I` を使い、`https://memo.anipopina.com/` を公開済み。
-本体スタックはCREATE_COMPLETE、CloudFrontはDeployed。DynamoDBのPITR・削除保護・TTLは有効。
-本体のアクセスログは無効。公開HTTPS経由の本文保存・認証・MCPは検証記録を参照。
+対象スタックは `MemoCertificate`（us-east-1）と `Memo`（ap-northeast-1）。
+既存ゾーンは `Z100947420XSLWOY8HP9I`、公開先は `https://memo.anipopina.com/`。
+公開HTTPS経由の検証結果は [検証記録](validation.md) を参照する。
 
 本番用の暗号鍵の控えは `.memo/production/vault-key` に保存し、ファイル権限は0600。
 ローカル開発用の `.memo/vault-key` とは別物。値を画面へ出さず生成・投入し、CDK生成物への混入がないことを確認した。

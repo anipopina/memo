@@ -15,7 +15,7 @@ import {
   type RecordValue,
   type Change,
 } from './repository';
-export const SESSION_SECONDS = 30 * 86400;
+export const SESSION_SECONDS = 90 * 86400;
 interface Challenge extends RecordValue {
   challenge: string;
   kind: 'register' | 'login';

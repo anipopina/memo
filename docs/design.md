@@ -292,7 +292,7 @@ SDK・プロトコルの既存採用版を維持し、別バージョンへの�
 
 OAuth追加は既存テーブルの新しいキー領域を使用し、移行・旧形式互換コードは追加しない。
 CloudFrontにはdiscoveryのAPI転送と認可画面のSPAルーティングを追加する。
-この変更は未デプロイ。公式SDKとの実通信・ローカルブラウザの成功を、
+公式SDKとの実通信・ローカルブラウザの成功を、
 ChatGPTでの公開HTTPS接続やiPhone実機での成功と同一視しない。
 
 参照：[MCP認可仕様](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)、

@@ -35,7 +35,6 @@ HTTPSとWebSocketの転送はTailscale Serve側で行います。
 共通MCP URLをAIクライアントへ登録し、OAuth（DCR）で接続してPasskeyログイン後に許可します。
 連携の確認・解除もアカウント画面から行えます。解除しても取得済みの秘密URLは無効になりません。
 
-OAuthの変更は未デプロイで、公開環境でのChatGPT接続は未検証です。
 権限・検索・再送の仕様は [設計文書](docs/design.md#oauthによるアカウント用mcp) を参照してください。
 
 ## 品質確認
