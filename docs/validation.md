@@ -459,3 +459,19 @@ iPhone実機の本番Passkey・IME、およびChatGPTアプリからのMCP接続
 OAuth discoveryと認可画面へのルーティング、未認可のアカウントMCPが401を返すことを確認した。
 メモ本文・アカウントを作成する本番テストは行っていない。
 ChatGPTによるOAuth接続、iPhone実機での拡大抑制・操作は未確認。
+
+## favicon・OGP画像（2026-11-14、ローカル）
+
+- faviconを単色SVGにし、背景・折り目・本文の線の透過を確認。344バイト。
+- OGPは文字をパス化したSVGから1200×630のパレットPNGを作成。
+  背景・文字・カーソルをベタ塗りにし、縁だけ中間色を残した。
+  文字を当初の62%に縮小した最終画像は4,312バイト。
+  編集用原稿と出所は [ブランド画像](../assets/branding/README.md) を参照。
+- ビルド成果物を使い、Chromium・WebKitでfaviconの16・32・64px表示を
+  明暗両方の背景で確認。切り抜き部分のalpha、画像参照、OGP・Twitter Cardの設定を確認。
+- OGPの中央を正方形に切り抜いたApple Touch Iconとmanifest用PNGを追加。
+  ICO faviconとtheme-colorも設定し、manifestの起動先はサイトルート、表示はbrowserとした。
+  Chromium・WebKitで参照先と寸法を確認し、正方形アイコンの文字がmaskableの
+  セーフゾーン内に収まることも検証した。
+- `pnpm build`・`pnpm format:check` 成功。実際のiPhone・Windowsでのタブ表示と
+  公開先のSNSプレビューは未確認。公開操作は行っていない。
