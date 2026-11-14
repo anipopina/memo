@@ -46,6 +46,7 @@ const server = await createServer({
     proxy: {
       '/api': { target: `http://127.0.0.1:${address.port}` },
       '/mcp': { target: `http://127.0.0.1:${address.port}` },
+      '/.well-known': { target: `http://127.0.0.1:${address.port}` },
     },
     headers: {
       'Referrer-Policy': 'no-referrer',

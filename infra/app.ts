@@ -128,7 +128,7 @@ export class MemoStack extends Stack {
     });
     const rewrite = new cloudfront.Function(this, 'Route', {
       code: cloudfront.FunctionCode.fromInline(
-        "function handler(event){var r=event.request;if(/^\\/(?:[A-Za-z0-9_-]{22})?$/.test(r.uri)){r.uri='/index.html';}return r;}",
+        "function handler(event){var r=event.request;if(/^\\/(?:[A-Za-z0-9_-]{22}|connect)?$/.test(r.uri)){r.uri='/index.html';}return r;}",
       ),
     });
     const headers = new cloudfront.ResponseHeadersPolicy(this, 'Headers', {
@@ -194,7 +194,11 @@ export class MemoStack extends Stack {
           },
         ],
       },
-      additionalBehaviors: { '/api/*': apiBehavior, '/mcp/*': apiBehavior },
+      additionalBehaviors: {
+        '/api/*': apiBehavior,
+        '/mcp/*': apiBehavior,
+        '/.well-known/*': apiBehavior,
+      },
     });
     new deployment.BucketDeployment(this, 'Release', {
       sources: [deployment.Source.asset(resolve('dist/web'))],

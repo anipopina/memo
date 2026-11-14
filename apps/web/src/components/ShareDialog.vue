@@ -30,7 +30,7 @@ defineExpose({ open });
       </button>
     </div>
     <label
-      >メモのURL<input
+      >このメモのURL<input
         :value="web"
         readonly
         aria-label="メモのURL"
@@ -38,7 +38,7 @@ defineExpose({ open });
     /></label>
     <button class="wide" @click="copy(web)">メモのURLをコピー</button>
     <label class="spaced"
-      >AIから編集<input
+      >AIにこのメモを共有する<input
         :value="mcp"
         readonly
         aria-label="MCPのURL"

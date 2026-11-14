@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import MaterialIcon from './MaterialIcon.vue';
+import OAuthConnections from './OAuthConnections.vue';
 import { shallowRef, useTemplateRef } from 'vue';
 import {
   startRegistration,
@@ -19,6 +20,8 @@ const { signedIn, signOut } = defineProps<{
 }>();
 const emit = defineEmits<{ authenticated: []; closed: [] }>();
 const dialog = useTemplateRef<HTMLDialogElement>('dialog');
+const connections =
+  useTemplateRef<InstanceType<typeof OAuthConnections>>('connections');
 const name = shallowRef(''),
   busy = shallowRef(false),
   error = shallowRef(''),
@@ -36,6 +39,7 @@ function open() {
   credentials.value = [];
   dialog.value?.showModal();
   if (signedIn) {
+    void connections.value?.refresh();
     busy.value = true;
     void refresh()
       .catch(() => {
@@ -208,6 +212,7 @@ defineExpose({ open });
     </form>
     <template v-if="signedIn">
       <p v-if="added" role="status">Passkeyを追加しました。</p>
+      <OAuthConnections ref="connections" />
       <div class="account-session">
         <button class="danger wide" :disabled="busy" @click="logout">
           ログアウト

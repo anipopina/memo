@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { assertNoteSize, isNoteToken } from '../../packages/core/src/note';
 import { hash, TokenVault } from './crypto';
 import {
@@ -68,6 +68,87 @@ export class Notes {
     content: string,
     account?: string,
   ): Promise<Note> {
+    return this.createRecord(token, content, account);
+  }
+  async requireMember(account: string, token: string) {
+    if (
+      !isNoteToken(token) ||
+      !(await this.repo.get(referenceKey(account, token)))
+    )
+      throw new AppError('not_found', 404);
+  }
+  async createInAccount(account: string, content: string, operationId: string) {
+    assertNoteSize(content);
+    const key = {
+      pk: `account#${account}`,
+      sk: `create-operation#${operationId}`,
+    };
+    const fingerprint = hash(content);
+    const replay = async () => {
+      const row = await this.repo.get<
+        RecordValue & { fingerprint: string; token: string }
+      >(key);
+      if (!row) return;
+      if (row.value.fingerprint !== fingerprint)
+        throw new AppError('operation_id_reused', 409);
+      const token = this.vault.decrypt(
+        row.value.token,
+        `${account}:${operationId}`,
+      );
+      await this.requireMember(account, token);
+      return { token, version: 1 };
+    };
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const previous = await replay();
+      if (previous) return previous;
+      const period = 3600;
+      const rateKey = {
+        pk: `rate#${hash(`oauth-create:${account}:${Math.floor(nowSeconds() / period)}`)}`,
+        sk: 'rate',
+      };
+      const rate = await this.repo.get<RecordValue & { count: number }>(
+        rateKey,
+      );
+      if ((rate?.value.count ?? 0) >= 30)
+        throw new AppError('rate_limited', 429);
+      const token = randomBytes(16).toString('base64url');
+      try {
+        await this.createRecord(token, content, account, [
+          {
+            key: rateKey,
+            expected: rate?.rev ?? null,
+            value: {
+              count: (rate?.value.count ?? 0) + 1,
+              expires: nowSeconds() + period * 2,
+            } as RecordValue,
+          },
+          {
+            key,
+            expected: null,
+            value: {
+              fingerprint,
+              token: this.vault.encrypt(token, `${account}:${operationId}`),
+              expires: nowSeconds() + 86400,
+            } as RecordValue,
+          },
+        ]);
+        return { token, version: 1 };
+      } catch (error) {
+        if (!(error instanceof AppError && error.code === 'already_exists'))
+          throw error;
+      }
+    }
+    const previous = await replay();
+    if (previous) return previous;
+    throw new AppError('rate_limited', 429);
+  }
+
+  private async createRecord(
+    token: string,
+    content: string,
+    account?: string,
+    extra: Change[] = [],
+  ): Promise<Note> {
     if (!isNoteToken(token)) throw new AppError('invalid_token');
     assertNoteSize(content);
     const time = Date.now();
@@ -79,6 +160,7 @@ export class Notes {
       updatedAt: time,
     };
     const changes: Change[] = [
+      ...extra,
       { key: noteKey(token), expected: null, value: note },
       {
         key: { ...noteKey(token), sk: 'version' },
@@ -122,26 +204,37 @@ export class Notes {
       entry = await this.repo.get(key);
     if (entry) await this.repo.commit([{ key, expected: entry.rev }]);
   }
-  async list(account: string) {
+  async list(
+    account: string,
+    { after, limit }: { after?: string; limit?: number } = {},
+  ) {
     const rows = await this.repo.query<Reference>(
       `account#${account}`,
       'note#',
     );
+    const references = rows
+      .map(({ value }) => ({
+        ...value,
+        token: this.vault.decrypt(value.token, `${account}:${value.noteHash}`),
+      }))
+      .filter((item) => !after || item.token > after);
+    if (limit !== undefined)
+      references.sort((a, b) =>
+        a.token < b.token ? -1 : a.token > b.token ? 1 : 0,
+      );
+    else references.sort((a, b) => b.addedAt - a.addedAt);
     return Promise.all(
-      rows
-        .sort((a, b) => b.value.addedAt - a.value.addedAt)
-        .map(async ({ value }) => {
-          const token = this.vault.decrypt(
-            value.token,
-            `${account}:${value.noteHash}`,
-          );
-          const metadata = await this.repo.get<NoteVersion>({
-            pk: `note#${value.noteHash}`,
-            sk: 'version',
-          });
-          const title = metadata?.value.title ?? '無題';
-          return { token, title, addedAt: value.addedAt };
-        }),
+      references.slice(0, limit).map(async (value) => {
+        const metadata = await this.repo.get<NoteVersion>({
+          pk: `note#${value.noteHash}`,
+          sk: 'version',
+        });
+        return {
+          token: value.token,
+          title: metadata?.value.title ?? '無題',
+          addedAt: value.addedAt,
+        };
+      }),
     );
   }
   async mutate(

@@ -13,6 +13,9 @@ import {
   type RecordValue,
 } from './repository';
 import { mcpRequest } from './mcp';
+import { OAuth } from './oauth';
+import { oauthRoutes } from './oauth-routes';
+import { accountMcpRequest } from './account-mcp';
 interface Rate extends RecordValue {
   count: number;
 }
@@ -33,6 +36,7 @@ export function createApp(repo: Repository, config: AppConfig) {
   const app = new Hono<{ Variables: { account: string | undefined } }>();
   const notes = new Notes(repo, new TokenVault(config.vaultKey));
   const auth = new Auth(repo, config.origin);
+  const oauth = new OAuth(repo, config.origin);
   const secure = new URL(config.origin).protocol === 'https:';
   const cookie = secure ? '__Host-memo' : 'memo_local';
   app.use('*', async (c, next) => {
@@ -40,9 +44,23 @@ export function createApp(repo: Repository, config: AppConfig) {
     c.header('Referrer-Policy', 'no-referrer');
     c.header('X-Content-Type-Options', 'nosniff');
     const origin = c.req.header('origin');
+    const protocol =
+      /^\/api\/oauth\/(register|token|revoke)$/.test(c.req.path) ||
+      c.req.path.startsWith('/.well-known/');
+    const navigation =
+      c.req.path === '/api/oauth/authorize' && c.req.method === 'GET';
+    if (protocol) {
+      c.header('Access-Control-Allow-Origin', '*');
+      c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      if (c.req.method === 'OPTIONS') return c.body(null, 204);
+      await next();
+      return;
+    }
     if (
-      (origin && origin !== config.origin) ||
-      c.req.header('sec-fetch-site') === 'cross-site'
+      !navigation &&
+      ((origin && origin !== config.origin) ||
+        c.req.header('sec-fetch-site') === 'cross-site')
     )
       return c.json({ error: 'invalid_origin' }, 403);
     if (
@@ -65,16 +83,20 @@ export function createApp(repo: Repository, config: AppConfig) {
     const group =
       c.req.method === 'GET'
         ? 'read'
-        : c.req.path.startsWith('/api/auth/')
-          ? 'auth'
-          : c.req.method === 'PUT'
-            ? 'create'
-            : 'write';
+        : c.req.path === '/api/oauth/register'
+          ? 'oauth-register'
+          : c.req.path === '/api/oauth/token'
+            ? 'oauth-token'
+            : c.req.path.startsWith('/api/auth/')
+              ? 'auth'
+              : c.req.method === 'PUT'
+                ? 'create'
+                : 'write';
     const period = group === 'create' ? 3600 : 60,
       limit =
         group === 'create'
           ? 30
-          : group === 'auth'
+          : group === 'auth' || group === 'oauth-register'
             ? 20
             : group === 'read'
               ? 300
@@ -219,6 +241,8 @@ export function createApp(repo: Repository, config: AppConfig) {
     );
     return c.json({ ok: true });
   });
+  app.route('/', oauthRoutes(oauth));
+  app.all('/mcp/account', (c) => accountMcpRequest(c.req.raw, oauth, notes));
   app.all('/mcp/:token', async (c) => {
     const token = c.req.param('token');
     if (!isNoteToken(token)) return c.json({ error: 'not_found' }, 404);
