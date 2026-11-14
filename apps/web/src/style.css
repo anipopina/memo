@@ -40,6 +40,7 @@ button,
 a,
 input {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 button {
   cursor: pointer;
@@ -202,6 +203,7 @@ button:disabled {
   font-display: swap;
 }
 .tiptap {
+  touch-action: manipulation;
   font-family: 'UDEV Gothic HS', monospace;
   font-variant-ligatures: none;
   /* Preserve half-pixel advances at odd font sizes in Chromium. */
@@ -423,6 +425,10 @@ input {
   margin-top: 24px;
 }
 @media (hover: none) and (pointer: coarse) {
+  .tiptap {
+    /* Avoid focus zoom on iPhone while keeping pinch zoom available. */
+    font-size: 16px;
+  }
   .indent-popover {
     display: flex;
   }

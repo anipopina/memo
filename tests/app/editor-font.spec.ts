@@ -43,7 +43,7 @@ test('bundled editor font loads and keeps Japanese and ASCII at a 2:1 width rati
     };
   });
   expect(metrics.loaded).toBe(true);
-  expect(metrics.size).toBe('15px');
+  expect(metrics.size).toBe(testInfo.project.use.hasTouch ? '16px' : '15px');
   expect(metrics.family).toContain('UDEV Gothic HS');
   expect(metrics.japanese).toBeCloseTo(metrics.ascii, 2);
   expect(metrics.quote).toBeCloseTo(metrics.letter, 2);
