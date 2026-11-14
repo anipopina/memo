@@ -16,6 +16,7 @@ const url = `${location.origin}/mcp/account`;
 async function refresh() {
   try {
     connections.value = await api<Connection[]>('/oauth/connections');
+    error.value = '';
   } catch {
     error.value = 'AI連携を取得できませんでした。';
   }

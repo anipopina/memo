@@ -6,19 +6,12 @@ import { isNoteToken, MAX_NOTE_BYTES } from '../../packages/core/src/note';
 import { Auth, SESSION_SECONDS } from './auth';
 import { Notes, AppError } from './notes';
 import { hash, TokenVault } from './crypto';
-import {
-  Conflict,
-  nowSeconds,
-  type Repository,
-  type RecordValue,
-} from './repository';
+import { Conflict, nowSeconds, type Repository } from './repository';
 import { mcpRequest } from './mcp';
 import { OAuth } from './oauth';
 import { oauthRoutes } from './oauth-routes';
 import { accountMcpRequest } from './account-mcp';
-interface Rate extends RecordValue {
-  count: number;
-}
+import { consumeRate } from './rate-limit';
 const tokenSchema = z.string().refine(isNoteToken);
 const mutation = z
   .object({
@@ -106,25 +99,13 @@ export function createApp(repo: Repository, config: AppConfig) {
       pk: `rate#${hash(`${ip}:${group}:${Math.floor(nowSeconds() / period)}`)}`,
       sk: 'rate',
     };
-    const row = await repo.get<Rate>(key);
-    if ((row?.value.count ?? 0) >= limit) {
-      c.header('Retry-After', String(period));
-      return c.json({ error: 'rate_limited' }, 429);
-    }
     try {
-      await repo.commit([
-        {
-          key,
-          expected: row?.rev ?? null,
-          value: {
-            count: (row?.value.count ?? 0) + 1,
-            expires: nowSeconds() + period * 2,
-          } as Rate,
-        },
-      ]);
+      await consumeRate(repo, key, limit, period);
     } catch (error) {
-      if (error instanceof Conflict)
-        return c.json({ error: 'rate_limited' }, 429);
+      if (error instanceof AppError && [429, 503].includes(error.status)) {
+        c.header('Retry-After', String(error.status === 429 ? period : 1));
+        return c.json({ error: error.code }, error.status as 429 | 503);
+      }
       throw error;
     }
     await next();
