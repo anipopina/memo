@@ -17,6 +17,7 @@ import { serializeMarkdown } from '../../../packages/core/src/markdown';
 import { isNoteToken } from '../../../packages/core/src/note';
 import { api, ApiError, type NoteReference } from './api';
 import { useNote } from './useNote';
+import { useFileDrop } from './useFileDrop';
 import MaterialIcon from './components/MaterialIcon.vue';
 import NoteList from './components/NoteList.vue';
 import AccountDialog from './components/AccountDialog.vue';
@@ -170,6 +171,44 @@ async function create() {
     await focusEditor();
   } catch {
     message.value = '作成できませんでした。';
+  } finally {
+    busy.value = false;
+  }
+}
+const { dragging } = useFileDrop({
+  allowed: () =>
+    note.state.ready &&
+    !busy.value &&
+    !navigating.value &&
+    !note.state.composing &&
+    !document.querySelector('dialog[open]'),
+  importText,
+  report: (text) => {
+    message.value = text;
+  },
+});
+async function importText(text: string) {
+  busy.value = true;
+  message.value = '';
+  try {
+    const token = note.newToken();
+    if (!(await openNote(token, { allowCreate: true, fresh: true }))) return;
+    loadMarkdown(editor, text);
+    note.edit(text);
+    localStorage.setItem(
+      signedIn.value ? `memo.last.${accountId.value}` : 'memo.current',
+      token,
+    );
+    if (innerWidth < 800) sidebar.value = false;
+    if (!(await note.flush(true))) {
+      message.value = note.state.localError
+        ? '保存できませんでした。元のファイルを保持して接続を確認してください。'
+        : '保存できませんでした。本文はこの端末に保持しています。';
+    } else if (signedIn.value) await refreshList();
+    await focusEditor();
+  } catch {
+    message.value =
+      '取り込みを完了できませんでした。元のファイルを保持してください。';
   } finally {
     busy.value = false;
   }
@@ -344,6 +383,9 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="app" :class="{ 'list-visible': sidebar }">
+    <div v-if="dragging" class="file-drop-overlay" role="status">
+      ドロップして新しいメモを作成
+    </div>
     <button
       v-if="sidebar"
       class="drawer-backdrop"
