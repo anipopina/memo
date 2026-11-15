@@ -13,16 +13,32 @@ import {
 } from '../../../../packages/core/src/note-search';
 import { api, ApiError, type NoteReference } from '../api';
 import MaterialIcon from './MaterialIcon.vue';
-const { items, selected, signedIn, busy } = defineProps<{
+const {
+  items,
+  selected,
+  signedIn,
+  loading,
+  loadFailed,
+  busy,
+  moving,
+  creating,
+  moveError,
+} = defineProps<{
   items: NoteReference[];
   selected: string;
   signedIn: boolean;
+  loading: boolean;
+  loadFailed: boolean;
   busy: boolean;
+  moving: boolean;
+  creating: boolean;
+  moveError: string;
 }>();
 const emit = defineEmits<{
   select: [token: string];
   create: [];
   move: [token: string, before: string | null];
+  retry: [];
   account: [];
   close: [];
   searchQuery: [query: string];
@@ -40,7 +56,8 @@ const rows = computed(() => {
 });
 const pattern = computed(() => noteSearchPattern(query.value.trim()));
 const canMove = computed(
-  () => !busy && !pending.value && !response.value && items.length > 1,
+  () =>
+    !loading && !busy && !pending.value && !response.value && items.length > 1,
 );
 const dragged = shallowRef('');
 const dropTarget = shallowRef<{ token: string; below: boolean }>();
@@ -121,7 +138,7 @@ function clearSearch() {
 }
 async function search() {
   const term = query.value.trim();
-  if (!term || pending.value) return;
+  if (!term || pending.value || loading || loadFailed || moving) return;
   const controller = new AbortController();
   resetSearch();
   request = controller;
@@ -162,8 +179,11 @@ onBeforeUnmount(resetSearch);
 <template>
   <aside class="note-list" aria-label="メモリスト">
     <div class="list-heading">
-      <span class="app-name">memo</span
-      ><button
+      <span class="app-name">memo</span>
+      <span v-if="moving" class="progress" role="status">
+        <span class="spinner" aria-hidden="true"></span> 並べ替え中…
+      </span>
+      <button
         class="quiet list-close"
         aria-label="リストを閉じる"
         @click="emit('close')"
@@ -171,16 +191,47 @@ onBeforeUnmount(resetSearch);
         <MaterialIcon name="close" />
       </button>
     </div>
-    <template v-if="signedIn">
+    <div v-if="loading" class="list-placeholder">
+      <p class="progress" role="status">
+        <span class="spinner" aria-hidden="true"></span> リストを読み込み中…
+      </p>
+      <div aria-hidden="true">
+        <span v-for="row in 3" :key="row" class="skeleton-line"></span>
+      </div>
+    </div>
+    <template v-else-if="signedIn">
       <button
         class="new-note"
         :disabled="busy"
         title="新しいメモ（Ctrl/⌘＋Alt＋N）"
         @click="emit('create')"
       >
-        <MaterialIcon name="add" /> 新しいメモ
+        <span v-if="creating" class="spinner" aria-hidden="true"></span>
+        <MaterialIcon v-else name="add" />
+        {{ creating ? 'メモを作成中…' : '新しいメモ' }}
       </button>
+      <p v-if="moveError" class="error list-search-status" role="alert">
+        {{ moveError }}
+      </p>
       <nav aria-label="自分のメモ" @dragleave="leaveRows">
+        <div v-if="loadFailed" class="list-search-status">
+          <p role="alert">メモリストを取得できませんでした。</p>
+          <button class="quiet" @click="emit('retry')">再読み込み</button>
+        </div>
+        <div role="status" class="list-search-status">
+          <p v-if="pending" class="progress">
+            <span class="spinner" aria-hidden="true"></span> 検索中…
+          </p>
+          <p v-else-if="error">{{ error }}</p>
+          <p v-else-if="response">
+            {{ rows.length ? `${rows.length}件` : '一致するメモはありません' }}
+            <span v-if="response.truncatedAt" class="search-limit">
+              メモが多いため、リストの先頭{{
+                response.truncatedAt
+              }}件を検索しました。
+            </span>
+          </p>
+        </div>
         <div
           v-for="item in rows"
           :key="item.token"
@@ -199,6 +250,7 @@ onBeforeUnmount(resetSearch);
         >
           <button
             class="note-select"
+            :disabled="busy"
             :class="{ 'note-search-result': response }"
             :aria-current="item.token === selected ? 'page' : undefined"
             @click="emit('select', item.token)"
@@ -232,6 +284,7 @@ onBeforeUnmount(resetSearch);
             <input
               ref="queryInput"
               v-model="query"
+              :disabled="loadFailed"
               type="search"
               enterkeyhint="search"
               autocomplete="off"
@@ -258,23 +311,11 @@ onBeforeUnmount(resetSearch);
             class="icon-button"
             aria-label="検索"
             title="検索"
-            :disabled="!query.trim() || pending"
+            :disabled="!query.trim() || pending || loadFailed || moving"
           >
             <MaterialIcon name="search" />
           </button>
         </form>
-        <div role="status" class="list-search-status">
-          <p v-if="pending">検索中…</p>
-          <p v-else-if="error">{{ error }}</p>
-          <p v-else-if="response">
-            {{ rows.length ? `${rows.length}件` : '一致するメモはありません' }}
-            <span v-if="response.truncatedAt">
-              メモが多いため、リストの先頭{{
-                response.truncatedAt
-              }}件を検索しました。
-            </span>
-          </p>
-        </div>
       </div>
     </template>
     <div v-else class="guest-list">

@@ -4,6 +4,61 @@ import { randomBytes } from 'node:crypto';
 test.use({ baseURL: `http://localhost:${process.env.MEMO_APP_PORT}` });
 const editorName = { name: 'メモ本文', exact: true };
 
+test('note loading matches editor line spacing, delays its label, and offers retry after failure', async ({
+  page,
+}) => {
+  const token = randomBytes(16).toString('base64url');
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let attempts = 0;
+  await page.route(`**/api/notes/${token}`, async (route) => {
+    if (++attempts === 1) {
+      await delayed;
+      return route.fulfill({ status: 503, json: { error: 'request_failed' } });
+    }
+    await route.fulfill({
+      json: { content: '再取得したメモ\n2行目\n3行目', version: 1 },
+    });
+  });
+  await page.goto('/' + token);
+  const main = page.getByRole('main');
+  const retry = main.getByRole('button', { name: '再読み込み' });
+  const skeleton = main.locator('.document-skeleton');
+  const lineCenters = (elements: Element[]) =>
+    elements.map((element) => {
+      const { top, height } = element.getBoundingClientRect();
+      return top + height / 2;
+    });
+  let skeletonCenters: number[];
+  try {
+    await expect(skeleton).toBeVisible();
+    await expect(main.getByRole('status')).toHaveCount(0);
+    await expect(main.locator('.spinner')).toHaveCount(0);
+    skeletonCenters = await skeleton
+      .locator('.skeleton-line')
+      .evaluateAll(lineCenters);
+    await expect(main.getByRole('status')).toHaveText('メモを読み込み中…');
+    expect(
+      await skeleton.locator('.skeleton-line').evaluateAll(lineCenters),
+    ).toEqual(skeletonCenters);
+    await expect(retry).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(main.getByRole('alert')).toHaveText('メモを読み込めません');
+  await retry.click();
+  const lines = main.getByRole('textbox', editorName).locator('.memo-line');
+  await expect(lines).toHaveText(['再取得したメモ', '2行目', '3行目']);
+  const editorCenters = await lines.evaluateAll(lineCenters);
+  for (const [index, center] of editorCenters.entries()) {
+    expect(Math.abs(center - skeletonCenters[index])).toBeLessThan(1);
+  }
+  await expect(skeleton).toHaveCount(0);
+  await expect(retry).toHaveCount(0);
+});
+
 test('dragging list rows saves their new order and keeps the open note', async ({
   page,
   isMobile,
@@ -24,11 +79,16 @@ test('dragging list rows saves their new order and keeps the open note', async (
   await page.route(`**/api/notes/${items[1].token}`, (route) =>
     route.fulfill({ json: { content: items[1].title, version: 1 } }),
   );
-  await page.route('**/api/list/order', (route) => {
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/list/order', async (route) => {
     expect(route.request().postDataJSON()).toEqual({
       token: items[0].token,
       before: null,
     });
+    await delayed;
     saved = [items[1], items[2], items[0]];
     return route.fulfill({ json: { ok: true } });
   });
@@ -38,8 +98,17 @@ test('dragging list rows saves their new order and keeps the open note', async (
     .getByRole('button');
   await expect(rows).toHaveText(items.map(({ title }) => title));
   await rows.first().dragTo(rows.last(), { targetPosition: { x: 12, y: 30 } });
+  const moving = page.getByText('並べ替え中…', { exact: true });
+  try {
+    await expect(moving).toBeVisible();
+    await expect(rows).toHaveText(items.map(({ title }) => title));
+    await expect(rows.first()).toBeDisabled();
+  } finally {
+    release();
+  }
   const reordered = [items[1].title, items[2].title, items[0].title];
   await expect(rows).toHaveText(reordered);
+  await expect(moving).toHaveCount(0);
   await expect(page.getByRole('textbox', editorName)).toHaveText(
     items[1].title,
   );
@@ -49,6 +118,7 @@ test('dragging list rows saves their new order and keeps the open note', async (
 
 test('search highlights list and editor matches when switching notes and clears both', async ({
   page,
+  isMobile,
 }) => {
   const tokens = Array.from({ length: 3 }, () =>
     randomBytes(16).toString('base64url'),
@@ -142,8 +212,7 @@ test('search highlights list and editor matches when switching notes and clears 
 
   await rows.getByRole('button').first().click();
   await expect(editorMatches).toHaveText(['旅行', '旅行']);
-  if ((await toggle.getAttribute('aria-expanded')) === 'true')
-    await toggle.click();
+  if (!isMobile) await toggle.click();
   await expect(list).toBeHidden();
   await expect(editorMatches).toHaveCount(2);
   await editor.focus();
@@ -535,6 +604,12 @@ test('known memo names survive delayed loading and empty memo confirmation uses 
   await list.getByRole('button', { name: '既知のメモ名', exact: true }).click();
   await requestedNote;
   try {
+    const main = page.getByRole('main');
+    await expect(main.locator('.document-skeleton')).toBeVisible();
+    await expect(main.getByRole('status')).toHaveCount(0);
+    await expect(main.getByRole('button', { name: '再読み込み' })).toHaveCount(
+      0,
+    );
     await expect(
       list.getByRole('button', { name: '既知のメモ名', exact: true }),
     ).toBeVisible();

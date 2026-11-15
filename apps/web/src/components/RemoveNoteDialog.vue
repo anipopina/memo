@@ -54,7 +54,10 @@ defineExpose({ open });
       <button autofocus :disabled="busy" @click="dialog?.close()">
         キャンセル
       </button>
-      <button class="danger" :disabled="busy" @click="confirm">削除する</button>
+      <button class="danger" :disabled="busy" @click="confirm">
+        <span v-if="busy" class="spinner" aria-hidden="true"></span>
+        {{ busy ? '削除中…' : '削除する' }}
+      </button>
     </div>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
   </dialog>

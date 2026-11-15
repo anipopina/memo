@@ -33,6 +33,13 @@ const sidebar = shallowRef(
   localStorage.getItem('memo.sidebar') !== 'closed' && innerWidth >= 800,
 );
 const navigating = shallowRef(false);
+const starting = shallowRef(true);
+const listState = shallowRef<'loading' | 'ready' | 'failed'>('loading');
+const moving = shallowRef(false);
+const moveError = shallowRef('');
+const creating = shallowRef(false);
+const sharing = shallowRef(false);
+const adding = shallowRef(false);
 const searchQuery = shallowRef('');
 const busy = shallowRef(false),
   message = shallowRef('');
@@ -66,20 +73,62 @@ watch(searchQuery, (query) => {
   if (!note.state.composing) refreshSearchHighlight(editor, query);
 });
 const status = computed(() =>
-  note.state.loading
-    ? '読込中'
-    : note.state.localError
-      ? '端末に保管できません'
-      : note.state.error || note.state.saving
-        ? ''
-        : note.dirty()
-          ? '未保存'
-          : note.state.persisted
-            ? '保存済み'
-            : '',
+  note.state.localError
+    ? '端末に保管できません'
+    : note.state.error || note.state.saving
+      ? ''
+      : note.dirty()
+        ? '未保存'
+        : note.state.persisted
+          ? '保存済み'
+          : '',
 );
-const saveLabel = computed(
-  () => note.state.error || (note.state.saving ? '保存中' : status.value),
+const saveLabel = computed(() =>
+  note.state.ready
+    ? note.state.error || (note.state.saving ? '保存中' : status.value)
+    : '',
+);
+const documentLoading = computed(
+  () => starting.value || navigating.value || note.state.loading,
+);
+const DOCUMENT_LOADING_DELAY = { skeleton: 150, message: 3000 };
+const showDocumentSkeleton = shallowRef(false);
+const showDocumentLoadingMessage = shallowRef(false);
+const holdPreviousDocument = shallowRef(false);
+const documentReady = computed(
+  () => note.state.ready && !documentLoading.value,
+);
+watch(documentReady, (ready, previous) => {
+  holdPreviousDocument.value = !ready && previous && documentLoading.value;
+});
+const showEditor = computed(
+  () =>
+    documentReady.value ||
+    (documentLoading.value &&
+      holdPreviousDocument.value &&
+      !showDocumentSkeleton.value),
+);
+watch(
+  documentLoading,
+  (loading, _previous, onCleanup) => {
+    showDocumentSkeleton.value = false;
+    showDocumentLoadingMessage.value = false;
+    if (!loading) {
+      holdPreviousDocument.value = false;
+      return;
+    }
+    const skeletonTimer = window.setTimeout(() => {
+      showDocumentSkeleton.value = true;
+    }, DOCUMENT_LOADING_DELAY.skeleton);
+    const messageTimer = window.setTimeout(() => {
+      showDocumentLoadingMessage.value = true;
+    }, DOCUMENT_LOADING_DELAY.message);
+    onCleanup(() => {
+      window.clearTimeout(skeletonTimer);
+      window.clearTimeout(messageTimer);
+    });
+  },
+  { immediate: true },
 );
 const inList = computed(() =>
   items.value.some((item) => item.token === note.state.token),
@@ -123,29 +172,44 @@ async function refreshList() {
   }
   try {
     const next = await api<NoteReference[]>('/list');
-    if (isCurrent()) items.value = next;
+    if (isCurrent()) {
+      items.value = next;
+      listState.value = 'ready';
+    }
   } catch (error) {
     if (!isCurrent()) return;
     if (error instanceof ApiError && error.status === 401) {
       signedIn.value = false;
       accountId.value = '';
       items.value = [];
-    } else throw error;
+    } else {
+      if (listState.value !== 'ready') listState.value = 'failed';
+      throw error;
+    }
   }
+}
+async function retryList() {
+  listState.value = 'loading';
+  await refreshList().catch(() => {});
 }
 async function moveNote(token: string, before: string | null) {
   if (!signedIn.value || busy.value) return;
   busy.value = true;
-  message.value = '';
+  moving.value = true;
+  moveError.value = '';
+  let saved = false;
   try {
     await api('/list/order', { token, before });
+    saved = true;
     await refreshList();
   } catch (error) {
-    message.value =
-      error instanceof ApiError && error.code === 'list_order_too_large'
+    moveError.value = saved
+      ? '並び順は保存されましたが、一覧を取得できませんでした。'
+      : error instanceof ApiError && error.code === 'list_order_too_large'
         ? 'メモが多いため、並び順を保存できませんでした。'
         : '並び順を更新できませんでした。もう一度お試しください。';
   } finally {
+    moving.value = false;
     busy.value = false;
   }
 }
@@ -190,6 +254,7 @@ async function select(token: string, remember = true) {
 async function create() {
   if (!signedIn.value || busy.value) return;
   busy.value = true;
+  creating.value = true;
   try {
     const token = note.newToken();
     if (!(await openNote(token, { allowCreate: true, fresh: true }))) return;
@@ -204,6 +269,7 @@ async function create() {
   } catch {
     message.value = '作成できませんでした。';
   } finally {
+    creating.value = false;
     busy.value = false;
   }
 }
@@ -246,6 +312,8 @@ async function importText(text: string) {
   }
 }
 async function add() {
+  busy.value = true;
+  adding.value = true;
   try {
     const token = note.state.token;
     if (!isNoteToken(token)) throw new Error();
@@ -254,6 +322,9 @@ async function add() {
     await refreshList();
   } catch {
     message.value = 'リストに追加できませんでした。接続を確認してください。';
+  } finally {
+    adding.value = false;
+    busy.value = false;
   }
 }
 async function remove(token: string) {
@@ -267,6 +338,7 @@ async function remove(token: string) {
 }
 async function share() {
   busy.value = true;
+  sharing.value = true;
   try {
     if (!(await note.flush(true))) {
       message.value = '保存できませんでした。接続を確認してください。';
@@ -277,11 +349,17 @@ async function share() {
   } catch {
     message.value = '共有の準備ができませんでした。';
   } finally {
+    sharing.value = false;
     busy.value = false;
   }
 }
 async function session() {
   const value = await api<{ signedIn: boolean; account?: string }>('/session');
+  if (accountId.value !== (value.account ?? '')) {
+    items.value = [];
+    listState.value = 'loading';
+    moveError.value = '';
+  }
   signedIn.value = value.signedIn;
   accountId.value = value.account ?? '';
   await refreshList();
@@ -386,7 +464,10 @@ onMounted(async () => {
   try {
     await session();
   } catch {
-    message.value = '接続を確認してください。';
+    if (listState.value !== 'failed')
+      message.value = '接続を確認してください。';
+  } finally {
+    starting.value = false;
   }
   if (editor.isDestroyed) return;
   if (!signedIn.value && localStorage.getItem('memo.sidebar') === null)
@@ -418,9 +499,15 @@ onBeforeUnmount(() => {
       :items="visibleItems"
       :selected="note.state.token"
       :signed-in="signedIn"
+      :loading="starting || (signedIn && listState === 'loading')"
+      :load-failed="listState === 'failed'"
       :busy="busy"
+      :moving="moving"
+      :creating="creating"
+      :move-error="moveError"
       @select="select"
       @move="moveNote"
+      @retry="retryList"
       @create="create"
       @account="accountDialog?.open()"
       @search-query="searchQuery = $event"
@@ -441,24 +528,29 @@ onBeforeUnmount(() => {
         </div>
         <div class="header-right">
           <button
-            v-if="signedIn && note.state.ready"
-            :disabled="busy || navigating"
+            v-if="signedIn && (note.state.ready || documentLoading)"
+            class="list-membership"
+            :disabled="busy || documentLoading || listState !== 'ready'"
             @click="
               inList ? removeNoteDialog?.open(note.state.token, title) : add()
             "
           >
-            {{ inList ? 'リストから削除' : 'リストに追加' }}</button><button
+            {{
+              adding ? '追加中…' : inList ? 'リストから削除' : 'リストに追加'
+            }}</button><button
             class="header-icon-button"
             aria-label="共有"
             title="共有"
             :disabled="busy || !note.state.ready || note.state.composing"
             @click="share"
           >
-            <MaterialIcon name="iosShare" /></button
+            <span v-if="sharing" class="spinner" aria-hidden="true"></span>
+            <MaterialIcon v-else name="iosShare" /></button
           ><button
             class="account-button header-icon-button"
             aria-label="アカウント"
             :title="signedIn ? 'アカウント' : 'ログイン'"
+            :disabled="starting || busy"
             @click="accountDialog?.open()"
           >
             <MaterialIcon name="passkey" />
@@ -486,20 +578,35 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <main class="document-scroll" :aria-label="title">
+        <div
+          v-if="documentLoading && showDocumentSkeleton"
+          class="memo-document document-loading"
+        >
+          <div class="document-skeleton" aria-hidden="true">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+          </div>
+          <p
+            v-if="showDocumentLoadingMessage"
+            class="document-loading-status"
+            role="status"
+          >
+            メモを読み込み中…
+          </p>
+        </div>
         <EditorContent
-          v-show="note.state.ready && !navigating"
+          v-show="showEditor"
+          :inert="documentLoading"
           :editor="editor"
           class="memo-document"
         />
         <div
-          v-if="!note.state.ready || navigating"
+          v-if="!documentLoading && !note.state.ready && note.state.error"
           class="document-error"
-          role="status"
         >
-          {{ note.state.loading || navigating ? '' : note.state.error
-          }}<button v-if="!note.state.loading" class="quiet" @click="route">
-            再読み込み
-          </button>
+          <p role="alert">{{ note.state.error }}</p>
+          <button class="quiet" @click="route">再読み込み</button>
         </div>
       </main>
     </div>

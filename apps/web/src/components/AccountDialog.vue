@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MaterialIcon from './MaterialIcon.vue';
 import OAuthConnections from './OAuthConnections.vue';
-import { shallowRef, useTemplateRef } from 'vue';
+import { computed, onBeforeUnmount, shallowRef, useTemplateRef } from 'vue';
 import {
   startRegistration,
   startAuthentication,
@@ -20,42 +20,73 @@ const { signedIn, signOut } = defineProps<{
 }>();
 const emit = defineEmits<{ authenticated: []; closed: [] }>();
 const dialog = useTemplateRef<HTMLDialogElement>('dialog');
-const connections =
-  useTemplateRef<InstanceType<typeof OAuthConnections>>('connections');
+const opened = shallowRef(false);
+const loading = shallowRef(false);
+const loadFailed = shallowRef(false);
+const action = shallowRef<'register' | 'login' | 'revoke' | 'logout'>();
+const busy = computed(() => !!action.value);
 const name = shallowRef(''),
-  busy = shallowRef(false),
   error = shallowRef(''),
   added = shallowRef(false);
 const credentials = shallowRef<Passkey[]>([]),
   confirming = shallowRef<string | null>(null);
 async function refresh() {
   credentials.value = await api<Passkey[]>('/auth/credentials');
+  loadFailed.value = false;
 }
+let request: AbortController | undefined;
+async function loadCredentials() {
+  request?.abort();
+  const controller = new AbortController();
+  request = controller;
+  loading.value = true;
+  loadFailed.value = false;
+  try {
+    const next = await api<Passkey[]>(
+      '/auth/credentials',
+      undefined,
+      'GET',
+      controller.signal,
+    );
+    if (request === controller) credentials.value = next;
+  } catch {
+    if (request === controller) loadFailed.value = true;
+  } finally {
+    if (request === controller) {
+      request = undefined;
+      loading.value = false;
+    }
+  }
+}
+function stopLoading() {
+  request?.abort();
+  request = undefined;
+  loading.value = false;
+}
+function closed() {
+  if (dialog.value?.open) return;
+  stopLoading();
+  opened.value = false;
+  emit('closed');
+}
+onBeforeUnmount(stopLoading);
 function open() {
+  if (!dialog.value || dialog.value.open) return;
   error.value = '';
   added.value = false;
   name.value = '';
   confirming.value = null;
   credentials.value = [];
-  dialog.value?.showModal();
-  if (signedIn) {
-    void connections.value?.refresh();
-    busy.value = true;
-    void refresh()
-      .catch(() => {
-        error.value = 'Passkeyの一覧を取得できませんでした。';
-      })
-      .finally(() => {
-        busy.value = false;
-      });
-  }
+  opened.value = true;
+  if (signedIn) void loadCredentials();
+  dialog.value.showModal();
 }
 async function authenticate(kind: 'register' | 'login') {
   if (kind === 'register' && !name.value.trim()) {
     error.value = 'Passkeyの名前を入力してください。';
     return;
   }
-  busy.value = true;
+  action.value = kind;
   error.value = '';
   added.value = false;
   try {
@@ -87,11 +118,11 @@ async function authenticate(kind: 'register' | 'login') {
   } catch {
     error.value = 'Passkeyで完了できませんでした。もう一度試してください。';
   } finally {
-    busy.value = false;
+    action.value = undefined;
   }
 }
 async function revoke(id: string) {
-  busy.value = true;
+  action.value = 'revoke';
   error.value = '';
   try {
     await api(
@@ -107,11 +138,11 @@ async function revoke(id: string) {
         ? '最後のPasskeyは無効化できません。'
         : '無効化できませんでした。一覧を開き直して確認してください。';
   } finally {
-    busy.value = false;
+    action.value = undefined;
   }
 }
 async function logout() {
-  busy.value = true;
+  action.value = 'logout';
   error.value = '';
   try {
     if (await signOut()) dialog.value?.close();
@@ -121,7 +152,7 @@ async function logout() {
   } catch {
     error.value = 'ログアウトできませんでした。';
   } finally {
-    busy.value = false;
+    action.value = undefined;
   }
 }
 const formatDate = (time: number) =>
@@ -131,8 +162,9 @@ defineExpose({ open });
 <template>
   <dialog
     ref="dialog"
+    class="account-dialog"
     aria-labelledby="account-title"
-    @close="emit('closed')"
+    @close="closed"
     @cancel="busy && $event.preventDefault()"
   >
     <div class="dialog-heading">
@@ -152,7 +184,12 @@ defineExpose({ open });
         :disabled="busy"
         @click="authenticate('login')"
       >
-        ログイン
+        <span
+          v-if="action === 'login'"
+          class="spinner"
+          aria-hidden="true"
+        ></span>
+        {{ action === 'login' ? 'ログイン中…' : 'ログイン' }}
       </button>
       <div class="dialog-divider"></div>
     </template>
@@ -161,6 +198,20 @@ defineExpose({ open });
         このアカウントのPasskey
       </h3>
       <ul class="passkeys" aria-labelledby="passkey-list-title">
+        <li v-if="loading" class="passkey-row">
+          <span class="progress" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            Passkeyを読み込み中…
+          </span>
+        </li>
+        <li v-else-if="loadFailed" class="passkey-row">
+          <span class="error" role="alert"
+            >Passkeyの一覧を取得できませんでした。</span
+          >
+          <button class="quiet" :disabled="busy" @click="loadCredentials">
+            再読み込み
+          </button>
+        </li>
         <li v-for="credential in credentials" :key="credential.id">
           <div class="passkey-row">
             <div>
@@ -187,7 +238,12 @@ defineExpose({ open });
               :disabled="busy"
               @click="revoke(credential.id)"
             >
-              無効化する</button
+              <span
+                v-if="action === 'revoke'"
+                class="spinner"
+                aria-hidden="true"
+              ></span>
+              {{ action === 'revoke' ? '無効化中…' : '無効化する' }}</button
             ><button class="quiet" :disabled="busy" @click="confirming = null">
               やめる
             </button>
@@ -204,27 +260,49 @@ defineExpose({ open });
           maxlength="80"
           autocomplete="off"
           required
-          :disabled="busy"
+          :disabled="busy || loading"
       /></label>
-      <button class="wide" :disabled="busy || !name.trim()" type="submit">
-        {{ signedIn ? 'Passkeyを追加' : 'アカウントを作る' }}
+      <button
+        class="wide"
+        :disabled="busy || loading || !name.trim()"
+        type="submit"
+      >
+        <span
+          v-if="action === 'register'"
+          class="spinner"
+          aria-hidden="true"
+        ></span>
+        {{
+          action === 'register'
+            ? 'Passkeyを処理中…'
+            : signedIn
+              ? 'Passkeyを追加'
+              : 'アカウントを作る'
+        }}
       </button>
     </form>
     <template v-if="signedIn">
       <p v-if="added" role="status">Passkeyを追加しました。</p>
-      <OAuthConnections ref="connections" />
+      <OAuthConnections v-if="opened" />
       <div class="account-session">
-        <button class="danger wide" :disabled="busy" @click="logout">
-          ログアウト
+        <button class="danger wide" :disabled="busy || loading" @click="logout">
+          <span
+            v-if="action === 'logout'"
+            class="spinner"
+            aria-hidden="true"
+          ></span>
+          {{ action === 'logout' ? 'ログアウト中…' : 'ログアウト' }}
         </button>
       </div>
     </template>
     <p v-else class="hint">ログインするとメモリストを端末間で共有できます。</p>
-    <p v-if="busy" role="status" class="hint">確認中…</p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
   </dialog>
 </template>
 <style scoped>
+.account-dialog {
+  margin-block: 16px auto;
+}
 .account-session {
   margin-top: 28px;
   padding-top: 20px;
@@ -243,6 +321,7 @@ defineExpose({ open });
   padding: 0;
   margin: 0;
   max-height: 34dvh;
+  min-height: 64px;
   overflow: auto;
 }
 .passkeys li + li {

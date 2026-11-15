@@ -46,7 +46,23 @@ test('consent is readable without login and invalid requests cannot be approved'
 }, testInfo) => {
   await page.goto('/');
   const auth = await authorization(page, 'memo:read');
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/session', async (route) => {
+    await delayed;
+    await route.fulfill({ json: { signedIn: false } });
+  });
   await page.goto(auth.location);
+  try {
+    await expect(page.getByRole('status')).toHaveText('連携情報を確認中…');
+    await expect(
+      page.getByRole('button', { name: 'Passkeyでログイン' }),
+    ).toHaveCount(0);
+  } finally {
+    release();
+  }
   await expect(
     page.getByRole('heading', { name: 'AI連携の確認' }),
   ).toBeVisible();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, shallowRef, useTemplateRef } from 'vue';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import AccountDialog from './AccountDialog.vue';
 interface RequestInfo {
   clientName: string;
@@ -9,23 +9,41 @@ interface RequestInfo {
 }
 const info = shallowRef<RequestInfo>(),
   signedIn = shallowRef(false);
-const busy = shallowRef(true),
+const checking = shallowRef(true),
+  deciding = shallowRef<'allow' | 'deny'>(),
+  retryable = shallowRef(false),
   error = shallowRef('');
 const dialog =
   useTemplateRef<InstanceType<typeof AccountDialog>>('accountDialog');
 const request = new URLSearchParams(location.search).get('request') ?? '';
-async function session() {
-  signedIn.value = (await api<{ signedIn: boolean }>('/session')).signedIn;
-}
-async function authenticated() {
+async function load() {
+  checking.value = true;
+  info.value = undefined;
+  retryable.value = false;
+  error.value = '';
   try {
-    await session();
-  } catch {
-    error.value = 'ログイン状態を確認できませんでした。';
+    const [details, session] = await Promise.all([
+      api<RequestInfo>(`/oauth/request/${encodeURIComponent(request)}`),
+      api<{ signedIn: boolean }>('/session'),
+    ]);
+    info.value = details;
+    signedIn.value = session.signedIn;
+  } catch (cause) {
+    const invalid =
+      !request ||
+      (cause instanceof ApiError &&
+        ['invalid_request', 'invalid_client'].includes(cause.code));
+    error.value = invalid
+      ? '連携リクエストが無効か期限切れです。AIクライアントから接続をやり直してください。'
+      : '連携情報を確認できませんでした。';
+    retryable.value = !invalid;
+  } finally {
+    checking.value = false;
   }
 }
 async function decide(allow: boolean) {
-  busy.value = true;
+  if (deciding.value) return;
+  deciding.value = allow ? 'allow' : 'deny';
   error.value = '';
   try {
     const result = await api<{ redirect: string }>('/oauth/decision', {
@@ -36,27 +54,18 @@ async function decide(allow: boolean) {
   } catch {
     error.value =
       '連携を完了できませんでした。AIクライアントから接続をやり直してください。';
-    busy.value = false;
+    deciding.value = undefined;
   }
 }
-onMounted(async () => {
-  try {
-    info.value = await api<RequestInfo>(
-      `/oauth/request/${encodeURIComponent(request)}`,
-    );
-    await session();
-  } catch {
-    error.value =
-      '連携リクエストが無効か期限切れです。AIクライアントから接続をやり直してください。';
-  } finally {
-    busy.value = false;
-  }
-});
+onMounted(load);
 </script>
 <template>
   <main class="oauth-consent">
     <h1>AI連携の確認</h1>
-    <template v-if="info">
+    <p v-if="checking" class="progress" role="status">
+      <span class="spinner" aria-hidden="true"></span> 連携情報を確認中…
+    </p>
+    <template v-else-if="info">
       <p>
         <strong>{{ info.clientName }}</strong>
         がメモへのアクセスを要求しています。
@@ -82,29 +91,43 @@ onMounted(async () => {
         連携はアカウント画面から解除できます。解除しても取得済みの本文や秘密URLは無効になりません。
       </p>
       <p v-if="!signedIn">メモのアカウントにPasskeyでログインしてください。</p>
-      <button
-        v-if="!signedIn"
-        class="primary wide"
-        :disabled="busy"
-        @click="dialog?.open()"
-      >
+      <button v-if="!signedIn" class="primary wide" @click="dialog?.open()">
         Passkeyでログイン
       </button>
       <template v-else>
-        <button class="primary wide" :disabled="busy" @click="decide(true)">
-          連携を許可
+        <button
+          class="primary wide"
+          :disabled="!!deciding"
+          @click="decide(true)"
+        >
+          <span
+            v-if="deciding === 'allow'"
+            class="spinner"
+            aria-hidden="true"
+          ></span>
+          {{ deciding === 'allow' ? '連携中…' : '連携を許可' }}
         </button>
-        <button class="quiet wide" :disabled="busy" @click="decide(false)">
-          キャンセル
+        <button
+          class="quiet wide"
+          :disabled="!!deciding"
+          @click="decide(false)"
+        >
+          <span
+            v-if="deciding === 'deny'"
+            class="spinner"
+            aria-hidden="true"
+          ></span>
+          {{ deciding === 'deny' ? 'キャンセル中…' : 'キャンセル' }}
         </button>
       </template>
     </template>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <button v-if="retryable" class="quiet" @click="load">再読み込み</button>
     <AccountDialog
       ref="accountDialog"
       :signed-in="false"
       :sign-out="async () => false"
-      @authenticated="authenticated"
+      @authenticated="load"
     />
   </main>
 </template>

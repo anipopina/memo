@@ -3,6 +3,49 @@ import { randomBytes } from 'node:crypto';
 test.use({ baseURL: `http://localhost:${process.env.MEMO_APP_PORT}` });
 const textbox = { name: 'メモ本文', exact: true };
 
+test('account loading reserves the first Passkey row and waits before showing empty AI connections', async ({
+  page,
+}) => {
+  const token = randomBytes(16).toString('base64url');
+  await page.route('**/api/session', (route) =>
+    route.fulfill({ json: { signedIn: true, account: 'delayed-account' } }),
+  );
+  await page.route('**/api/list', (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/notes/${token}`, (route) =>
+    route.fulfill({ json: { content: 'メモ', version: 1 } }),
+  );
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/auth/credentials', async (route) => {
+    await delayed;
+    await route.fulfill({ json: [{ id: 'pc', name: 'PC', createdAt: 1 }] });
+  });
+  await page.route('**/api/oauth/connections', async (route) => {
+    await delayed;
+    await route.fulfill({ json: [] });
+  });
+  await page.goto('/' + token);
+  await page.getByRole('button', { name: 'アカウント', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  const input = dialog.getByRole('textbox', { name: 'Passkeyの名前' });
+  const empty = dialog.getByText('連携中のAIクライアントはありません。');
+  let inputY: number;
+  try {
+    await expect(dialog.getByText('Passkeyを読み込み中…')).toBeVisible();
+    await expect(dialog.getByText('AI連携を読み込み中…')).toHaveCount(1);
+    await expect(empty).toHaveCount(0);
+    inputY = (await input.boundingBox())!.y;
+  } finally {
+    release();
+  }
+  await expect(dialog.getByText('PC', { exact: true })).toBeVisible();
+  await expect(empty).toHaveCount(1);
+  await expect(input).toBeEnabled();
+  expect((await input.boundingBox())!.y).toBeCloseTo(inputY);
+});
+
 test('an empty reserved note has its own URL and survives reload without database creation', async ({
   page,
   request,
