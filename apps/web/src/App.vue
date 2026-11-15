@@ -70,6 +70,38 @@ const editor = createMemoEditor({
       });
   },
 });
+function placeCaretFromPadding(event: PointerEvent) {
+  if (event.button !== 0 || !showEditor.value || documentLoading.value) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || target !== event.currentTarget)
+    return;
+  const view = editor.view;
+  const lines = Array.from(view.dom.children).filter(
+    (element): element is HTMLElement => element instanceof HTMLElement,
+  );
+  const first = lines[0];
+  const last = lines.at(-1);
+  if (!first || !last) return;
+  let position: number;
+  if (event.clientY < first.getBoundingClientRect().top) position = 1;
+  else if (event.clientY >= last.getBoundingClientRect().bottom)
+    position = view.state.doc.content.size - 1;
+  else {
+    const line = lines.find((element) => {
+      const rect = element.getBoundingClientRect();
+      return event.clientY >= rect.top && event.clientY < rect.bottom;
+    });
+    if (!line) return;
+    const rect = line.getBoundingClientRect();
+    if (event.clientX >= rect.left && event.clientX <= rect.right) return;
+    const start = view.posAtDOM(line, 0);
+    const node = view.state.doc.resolve(start).parent;
+    position = event.clientX < rect.left ? start : start + node.content.size;
+  }
+  event.preventDefault();
+  editor.commands.setTextSelection(position);
+  view.focus();
+}
 watch(searchQuery, (query) => {
   if (!note.state.composing) refreshSearchHighlight(editor, query);
 });
@@ -633,6 +665,7 @@ onBeforeUnmount(() => {
           :inert="documentLoading && !previewing"
           :editor="editor"
           class="memo-document"
+          @pointerdown="placeCaretFromPadding"
         />
         <div
           v-if="

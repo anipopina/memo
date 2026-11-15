@@ -10,7 +10,7 @@ export default defineConfig({
   ],
   webServer: {
     command: `MEMO_DATA_DIR=tmp/app-browser-${process.pid} pnpm dev --port 0`,
-    wait: { stdout: /Local:.*127\.0\.0\.1:(?<memo_app_port>\d+)/ },
+    wait: { stdout: /Local:.*localhost:(?<memo_app_port>\d+)/ },
     timeout: 30000,
   },
 });

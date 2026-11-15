@@ -66,7 +66,7 @@ for (const origin of [
   handlers.set(origin, createApp(repo, { origin, vaultKey }));
   originsByHost.set(new URL(origin).host, origin);
 }
-console.info(`Local: http://127.0.0.1:${web.port}`);
+console.info(`Local: http://localhost:${web.port}`);
 async function close() {
   await server.close();
   api.close();
