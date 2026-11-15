@@ -1,6 +1,7 @@
 import { reactive, onBeforeUnmount } from 'vue';
 import { api, ApiError, newToken, type RemoteNote } from './api';
 import { drafts, recovery, releaseAdoptedDraft, type Draft } from './drafts';
+import { notePreviews, previewEpoch, PREVIEW_EPOCH_KEY } from './notePreviews';
 import { mergeMarkdown } from '../../../packages/core/src/merge';
 import { assertNoteSize } from '../../../packages/core/src/note';
 
@@ -14,6 +15,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     persisted: false,
     ready: false,
     loading: false,
+    preview: undefined as RemoteNote | undefined,
     saving: false,
     error: '',
     localError: false,
@@ -60,7 +62,10 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     state.content = text;
     apply(text, reset);
   }
-  function reconcile(remote: RemoteNote) {
+  function discardPreview() {
+    state.preview = undefined;
+  }
+  function reconcile(remote: RemoteNote, render = true) {
     const result = mergeMarkdown(state.base, state.content, remote.content);
     if (result.adjusted) {
       state.recovery = state.content;
@@ -72,7 +77,8 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     state.base = remote.content;
     state.version = remote.version;
     state.persisted = true;
-    if (result.content !== state.content) install(result.content);
+    if (render && result.content !== state.content) install(result.content);
+    else state.content = result.content;
   }
   async function prepareLeave(): Promise<boolean> {
     if (!state.ready) return true;
@@ -95,8 +101,10 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
       if (!(await prepareLeave())) return false;
       clearTimeout(idle);
       const epoch = ++generation;
+      const cacheEpoch = previewEpoch();
       state.ready = false;
       state.loading = true;
+      discardPreview();
       state.error = '';
       state.adjusted = false;
       state.recovery = '';
@@ -107,6 +115,23 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
       state.base = '';
       state.version = 0;
       state.persisted = false;
+      let waitingForRemote = !fresh;
+      const preview = fresh
+        ? Promise.resolve()
+        : notePreviews
+            .get(token, cacheEpoch)
+            .then((entry) => {
+              if (
+                !entry ||
+                !waitingForRemote ||
+                epoch !== generation ||
+                cacheEpoch !== previewEpoch()
+              )
+                return;
+              state.preview = entry;
+              apply(entry.content, true);
+            })
+            .catch(() => {});
       let stored: Draft | undefined;
       try {
         const candidates = (await drafts.all())
@@ -123,13 +148,22 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
           /* A new random capability can be reserved without a server record. */
         } else {
           const remote = await api<RemoteNote>(`/notes/${token}`);
+          waitingForRemote = false;
           if (epoch !== generation) return false;
+          void notePreviews.put(token, remote, cacheEpoch).catch(() => {});
           state.base = stored?.base ?? remote.content;
           state.content = stored?.content ?? remote.content;
-          reconcile(remote);
+          reconcile(remote, false);
         }
       } catch (error) {
         if (epoch !== generation) return false;
+        const unavailable =
+          error instanceof ApiError && [401, 403, 404].includes(error.status);
+        if (unavailable) {
+          waitingForRemote = false;
+          discardPreview();
+          void notePreviews.remove(token, cacheEpoch).catch(() => {});
+        }
         if (stored) {
           state.base = stored.base;
           state.content = stored.content;
@@ -148,6 +182,8 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
         ) {
           /* locally reserved empty note */
         } else {
+          if (!unavailable) await preview;
+          if (epoch !== generation) return false;
           state.error =
             error instanceof ApiError && error.status === 404
               ? 'メモが見つかりません'
@@ -157,9 +193,10 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
           return false;
         }
       }
+      waitingForRemote = false;
       state.loading = false;
       state.ready = true;
-      apply(state.content, true);
+      if (state.preview?.content !== state.content) apply(state.content, true);
       if (previousToken !== token) state.composing = false;
       await protect();
       if (stored && stored.key !== `${tabId}:${token}` && !state.localError)
@@ -178,6 +215,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     } finally {
       opening = false;
       state.loading = false;
+      if (state.ready) discardPreview();
     }
   }
   function schedule() {
@@ -196,7 +234,8 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     if (!state.ready || state.composing || disposed) return false;
     if (!dirty() && (!force || state.persisted)) return true;
     const epoch = generation,
-      token = state.token;
+      token = state.token,
+      cacheEpoch = previewEpoch();
     state.saving = true;
     state.error = '';
     try {
@@ -221,6 +260,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
                 'PUT',
               );
           if (epoch !== generation) return false;
+          void notePreviews.put(token, remote, cacheEpoch).catch(() => {});
           // Inputs arriving during a request are rebased on its acknowledged snapshot.
           const current = mergeMarkdown(sent, state.content, remote.content);
           state.base = remote.content;
@@ -283,6 +323,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     )
       return;
     const epoch = generation;
+    const cacheEpoch = previewEpoch();
     try {
       const remote = await api<{ version: number }>(
         `/notes/${state.token}/version`,
@@ -294,6 +335,7 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
         if (epoch !== generation || state.composing || state.saving || opening)
           return;
         if (note.version <= state.version) return;
+        void notePreviews.put(state.token, note, cacheEpoch).catch(() => {});
         reconcile(note);
         await protect();
         if (dirty()) schedule();
@@ -312,8 +354,16 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     void flush();
     void poll();
   };
+  function onStorage(event: StorageEvent) {
+    if (event.key === PREVIEW_EPOCH_KEY || event.key === null) discardPreview();
+  }
+  async function clearPreviews() {
+    discardPreview();
+    await notePreviews.clear().catch(() => {});
+  }
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('online', online);
+  window.addEventListener('storage', onStorage);
   const polling = setInterval(() => {
     void poll();
   }, SYNC.poll);
@@ -328,6 +378,17 @@ export function useNote(apply: (text: string, reset: boolean) => void) {
     clearInterval(saving);
     document.removeEventListener('visibilitychange', visibility);
     window.removeEventListener('online', online);
+    window.removeEventListener('storage', onStorage);
   });
-  return { state, open, edit, flush, dirty, poll, newToken, prepareLeave };
+  return {
+    state,
+    open,
+    edit,
+    flush,
+    dirty,
+    poll,
+    newToken,
+    prepareLeave,
+    clearPreviews,
+  };
 }

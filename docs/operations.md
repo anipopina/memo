@@ -53,6 +53,7 @@ pnpm exec tsx tools/check-infra.ts
 - `cdk diff` による作成・変更範囲と、CloudFrontの料金プラン・AWS全体の利用状況。
 - 実AWS上でのDynamoDB条件付き更新、Cookie、Origin、レート制限、配信ヘッダーの確認。
   初回公開時の実通信結果は [検証記録](validation.md) を参照。
+- HTMLとファイル名が固定の配布物は再検証し、`/assets/` のハッシュ付き配布物には長期キャッシュが付くことを確認する。
 - iPhone実機での保存・日本語IME・追従操作・Passkeyと、ChatGPTからのMCP接続。
   Playwrightの仮想認証器を実機Passkey検証と同一視しない。
 

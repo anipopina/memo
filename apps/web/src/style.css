@@ -272,6 +272,17 @@ button:disabled {
   font-size: 14px;
   color: var(--muted);
 }
+.document-preview-notice {
+  position: absolute;
+  inset-inline: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin-inline: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
 .document-skeleton {
   width: min(100%, 36rem);
   display: grid;

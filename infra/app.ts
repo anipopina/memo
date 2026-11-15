@@ -93,7 +93,7 @@ export class MemoStack extends Stack {
       handler: 'index.handler',
       runtime: lambda.Runtime.NODEJS_24_X,
       architecture: lambda.Architecture.ARM_64,
-      memorySize: 256,
+      memorySize: 512,
       timeout: Duration.seconds(28),
       logGroup,
       loggingFormat: lambda.LoggingFormat.JSON,
@@ -200,9 +200,21 @@ export class MemoStack extends Stack {
         '/.well-known/*': apiBehavior,
       },
     });
-    new deployment.BucketDeployment(this, 'Release', {
-      sources: [deployment.Source.asset(resolve('dist/web'))],
+    const webOutput = resolve('dist/web');
+    const assets = new deployment.BucketDeployment(this, 'ReleaseAssets', {
+      sources: [deployment.Source.asset(resolve(webOutput, 'assets'))],
       destinationBucket: bucket,
+      destinationKeyPrefix: 'assets',
+      prune: true,
+      retainOnDelete: true,
+      cacheControl: [
+        deployment.CacheControl.fromString('public,max-age=31536000,immutable'),
+      ],
+    });
+    const release = new deployment.BucketDeployment(this, 'Release', {
+      sources: [deployment.Source.asset(webOutput, { exclude: ['assets'] })],
+      destinationBucket: bucket,
+      exclude: ['assets/*'],
       distribution,
       distributionPaths: ['/*'],
       prune: true,
@@ -211,6 +223,7 @@ export class MemoStack extends Stack {
         deployment.CacheControl.fromString('public,max-age=0,must-revalidate'),
       ],
     });
+    release.node.addDependency(assets);
     new route53.ARecord(this, 'Alias', {
       zone,
       recordName: 'memo',

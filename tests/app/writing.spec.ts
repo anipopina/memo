@@ -4,6 +4,51 @@ import { randomBytes } from 'node:crypto';
 test.use({ baseURL: `http://localhost:${process.env.MEMO_APP_PORT}` });
 const editorName = { name: 'メモ本文', exact: true };
 
+test('a direct note is editable while the session and list are still loading', async ({
+  page,
+}) => {
+  const token = randomBytes(16).toString('base64url');
+  let releaseSession!: () => void;
+  const waitingForSession = new Promise<void>((resolve) => {
+    releaseSession = resolve;
+  });
+  let releaseList!: () => void;
+  const waitingForList = new Promise<void>((resolve) => {
+    releaseList = resolve;
+  });
+  await page.route('**/api/session', async (route) => {
+    await waitingForSession;
+    await route.fulfill({ json: { signedIn: true, account: 'direct-note' } });
+  });
+  await page.route('**/api/list', async (route) => {
+    await waitingForList;
+    await route.fulfill({
+      json: [{ token, title: '直接開いたメモ', addedAt: 1 }],
+    });
+  });
+  await page.route(`**/api/notes/${token}`, (route) =>
+    route.fulfill({ json: { content: '直接開いたメモ', version: 1 } }),
+  );
+  await page.goto('/' + token);
+  const editor = page.getByRole('textbox', editorName);
+  const account = page.getByRole('button', { name: 'アカウント', exact: true });
+  try {
+    await expect(editor).toHaveText('直接開いたメモ');
+    await expect(editor).toBeEditable();
+    await expect(account).toBeDisabled();
+    const listRequest = page.waitForRequest('**/api/list');
+    releaseSession();
+    await listRequest;
+    await expect(editor).toBeEditable();
+    await expect(account).toBeDisabled();
+  } finally {
+    releaseSession();
+    releaseList();
+  }
+  await expect(account).toBeEnabled();
+  await expect(editor).toHaveText('直接開いたメモ');
+});
+
 test('note loading matches editor line spacing, delays its label, and offers retry after failure', async ({
   page,
 }) => {

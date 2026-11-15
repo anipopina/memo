@@ -34,6 +34,7 @@ const sidebar = shallowRef(
 );
 const navigating = shallowRef(false);
 const starting = shallowRef(true);
+let initialSession: Promise<void> | undefined;
 const listState = shallowRef<'loading' | 'ready' | 'failed'>('loading');
 const moving = shallowRef(false);
 const moveError = shallowRef('');
@@ -88,13 +89,30 @@ const saveLabel = computed(() =>
     ? note.state.error || (note.state.saving ? '保存中' : status.value)
     : '',
 );
-const documentLoading = computed(
-  () => starting.value || navigating.value || note.state.loading,
-);
+const documentLoading = computed(() => navigating.value || note.state.loading);
 const DOCUMENT_LOADING_DELAY = { skeleton: 150, message: 3000 };
 const showDocumentSkeleton = shallowRef(false);
 const showDocumentLoadingMessage = shallowRef(false);
 const holdPreviousDocument = shallowRef(false);
+const previewing = computed(() => !!note.state.preview);
+watch(
+  previewing,
+  (preview) => {
+    if (!preview && !note.state.ready) holdPreviousDocument.value = false;
+    const editorProps = editor.options.editorProps;
+    editor.setOptions({
+      editable: !preview,
+      editorProps: {
+        ...editorProps,
+        attributes: {
+          ...editorProps.attributes,
+          'aria-readonly': String(preview),
+        },
+      },
+    });
+  },
+  { flush: 'sync' },
+);
 const documentReady = computed(
   () => note.state.ready && !documentLoading.value,
 );
@@ -103,6 +121,7 @@ watch(documentReady, (ready, previous) => {
 });
 const showEditor = computed(
   () =>
+    previewing.value ||
     documentReady.value ||
     (documentLoading.value &&
       holdPreviousDocument.value &&
@@ -240,6 +259,10 @@ async function openNote(
 async function select(token: string, remember = true) {
   busy.value = true;
   message.value = '';
+  const stopPreviewWatch = watch(previewing, (preview) => {
+    if (preview && note.state.token === token && innerWidth < 800)
+      sidebar.value = false;
+  });
   try {
     if (await openNote(token)) {
       if (remember && signedIn.value)
@@ -248,11 +271,12 @@ async function select(token: string, remember = true) {
       await focusEditor();
     }
   } finally {
+    stopPreviewWatch();
     busy.value = false;
   }
 }
 async function create() {
-  if (!signedIn.value || busy.value) return;
+  if (!signedIn.value || busy.value || documentLoading.value) return;
   busy.value = true;
   creating.value = true;
   try {
@@ -393,6 +417,7 @@ async function logout(): Promise<boolean> {
   try {
     if (!(await note.prepareLeave())) return false;
     await api('/auth/logout', {});
+    await note.clearPreviews();
     signedIn.value = false;
     accountId.value = '';
     items.value = [];
@@ -434,12 +459,16 @@ async function route() {
   navigating.value = true;
   try {
     const path = location.pathname;
-    if (path === '/' || path === '')
+    if (path === '/' || path === '') {
+      // The home route needs the account's last note and list fallback.
+      await initialSession;
+      if (editor.isDestroyed || location.pathname !== path) return;
       await openNote(topToken(), { allowCreate: true, replace: true });
-    else if (/^\/[A-Za-z0-9_-]{22}$/.test(path) && isNoteToken(path.slice(1)))
+    } else if (/^\/[A-Za-z0-9_-]{22}$/.test(path) && isNoteToken(path.slice(1)))
       await openNote(path.slice(1), { replace: true });
     else {
       note.state.ready = false;
+      note.state.preview = undefined;
       note.state.error = 'メモが見つかりません';
     }
   } finally {
@@ -458,9 +487,7 @@ const listTimer = setInterval(() => {
   if (signedIn.value && !busy.value && document.visibilityState === 'visible')
     void refreshList().catch(() => {});
 }, 15000);
-onMounted(async () => {
-  window.addEventListener('keydown', keyboard);
-  window.addEventListener('popstate', route);
+async function loadInitialSession() {
   try {
     await session();
   } catch {
@@ -472,8 +499,14 @@ onMounted(async () => {
   if (editor.isDestroyed) return;
   if (!signedIn.value && localStorage.getItem('memo.sidebar') === null)
     sidebar.value = false;
+}
+onMounted(async () => {
+  window.addEventListener('keydown', keyboard);
+  window.addEventListener('popstate', route);
+  initialSession = loadInitialSession();
   await route();
-  if (innerWidth >= 800 && note.state.ready) await focusEditor();
+  if (!editor.isDestroyed && innerWidth >= 800 && note.state.ready)
+    await focusEditor();
 });
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', keyboard);
@@ -501,7 +534,7 @@ onBeforeUnmount(() => {
       :signed-in="signedIn"
       :loading="starting || (signedIn && listState === 'loading')"
       :load-failed="listState === 'failed'"
-      :busy="busy"
+      :busy="busy || documentLoading"
       :moving="moving"
       :creating="creating"
       :move-error="moveError"
@@ -541,7 +574,7 @@ onBeforeUnmount(() => {
             class="header-icon-button"
             aria-label="共有"
             title="共有"
-            :disabled="busy || !note.state.ready || note.state.composing"
+            :disabled="busy || !documentReady || note.state.composing"
             @click="share"
           >
             <span v-if="sharing" class="spinner" aria-hidden="true"></span>
@@ -579,7 +612,7 @@ onBeforeUnmount(() => {
       </div>
       <main class="document-scroll" :aria-label="title">
         <div
-          v-if="documentLoading && showDocumentSkeleton"
+          v-if="documentLoading && showDocumentSkeleton && !previewing"
           class="memo-document document-loading"
         >
           <div class="document-skeleton" aria-hidden="true">
@@ -597,20 +630,44 @@ onBeforeUnmount(() => {
         </div>
         <EditorContent
           v-show="showEditor"
-          :inert="documentLoading"
+          :inert="documentLoading && !previewing"
           :editor="editor"
           class="memo-document"
         />
         <div
-          v-if="!documentLoading && !note.state.ready && note.state.error"
+          v-if="
+            !documentLoading &&
+            !note.state.ready &&
+            note.state.error &&
+            !previewing
+          "
           class="document-error"
         >
           <p role="alert">{{ note.state.error }}</p>
           <button class="quiet" @click="route">再読み込み</button>
         </div>
       </main>
+      <div v-if="previewing" class="notice document-preview-notice">
+        <span role="status">
+          {{
+            !documentLoading && note.state.error
+              ? '最新版を取得できません。前回取得した内容を表示しています。'
+              : '前回取得した内容を表示中。最新版を確認しています…'
+          }}
+        </span>
+        <button
+          v-if="!documentLoading && note.state.error"
+          class="quiet"
+          @click="route"
+        >
+          再読み込み
+        </button>
+      </div>
     </div>
-    <EditorOverlays :editor="editor" :composing="note.state.composing" />
+    <EditorOverlays
+      :editor="editor"
+      :composing="note.state.composing || previewing"
+    />
     <AccountDialog
       ref="accountDialog"
       :signed-in="signedIn"
