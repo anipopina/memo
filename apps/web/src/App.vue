@@ -6,6 +6,7 @@ import {
   onMounted,
   shallowRef,
   useTemplateRef,
+  watch,
 } from 'vue';
 import { EditorContent } from '@tiptap/vue-3';
 import {
@@ -13,6 +14,7 @@ import {
   loadMarkdown,
   applyRemoteMarkdown,
 } from '../../../packages/editor/src/editor';
+import { refreshSearchHighlight } from '../../../packages/editor/src/search-highlight';
 import { serializeMarkdown } from '../../../packages/core/src/markdown';
 import { isNoteToken } from '../../../packages/core/src/note';
 import { api, ApiError, type NoteReference } from './api';
@@ -31,6 +33,7 @@ const sidebar = shallowRef(
   localStorage.getItem('memo.sidebar') !== 'closed' && innerWidth >= 800,
 );
 const navigating = shallowRef(false);
+const searchQuery = shallowRef('');
 const busy = shallowRef(false),
   message = shallowRef('');
 const accountDialog =
@@ -45,6 +48,7 @@ const note = useNote((text, reset) => {
 });
 const editor = createMemoEditor({
   content: '',
+  searchQuery: () => searchQuery.value,
   onChange: (instance) => {
     if (!note.state.composing) note.edit(serializeMarkdown(instance.getJSON()));
   },
@@ -52,9 +56,14 @@ const editor = createMemoEditor({
     note.state.composing = value;
     if (!value)
       requestAnimationFrame(() => {
-        if (!editor.isDestroyed) note.edit(serializeMarkdown(editor.getJSON()));
+        if (editor.isDestroyed) return;
+        note.edit(serializeMarkdown(editor.getJSON()));
+        refreshSearchHighlight(editor, searchQuery.value);
       });
   },
+});
+watch(searchQuery, (query) => {
+  if (!note.state.composing) refreshSearchHighlight(editor, query);
 });
 const status = computed(() =>
   note.state.loading
@@ -213,27 +222,15 @@ async function importText(text: string) {
     busy.value = false;
   }
 }
-async function add(url?: string) {
+async function add() {
   try {
-    let token = note.state.token;
-    if (url) {
-      const parsed = new URL(url);
-      if (
-        parsed.origin !== location.origin ||
-        !/^\/[A-Za-z0-9_-]{22}$/.test(parsed.pathname) ||
-        parsed.search ||
-        parsed.hash
-      )
-        throw new Error();
-      token = parsed.pathname.slice(1);
-    }
+    const token = note.state.token;
     if (!isNoteToken(token)) throw new Error();
-    if (token === note.state.token && !(await note.flush(true)))
-      throw new Error();
+    if (!(await note.flush(true))) throw new Error();
     await api('/list', { token });
     await refreshList();
   } catch {
-    message.value = '追加できませんでした。メモのURLと接続を確認してください。';
+    message.value = 'リストに追加できませんでした。接続を確認してください。';
   }
 }
 async function remove(token: string) {
@@ -393,15 +390,16 @@ onBeforeUnmount(() => {
       @click="sidebar = false"
     ></button>
     <NoteList
-      v-if="sidebar"
+      v-show="sidebar"
+      :key="accountId"
       :items="visibleItems"
       :selected="note.state.token"
       :signed-in="signedIn"
       :busy="busy"
       @select="select"
       @create="create"
-      @add="add"
       @account="accountDialog?.open()"
+      @search-query="searchQuery = $event"
       @close="toggleList"
     />
     <div class="writing-area">

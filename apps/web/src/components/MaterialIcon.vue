@@ -3,6 +3,7 @@ defineProps<{
   name:
     | 'add'
     | 'close'
+    | 'search'
     | 'openInNew'
     | 'menu'
     | 'delete'
@@ -31,6 +32,9 @@ defineProps<{
 }
 .icon-close {
   --icon: url('../assets/material-symbols/close.svg');
+}
+.icon-search {
+  --icon: url('../assets/material-symbols/search.svg');
 }
 .icon-openInNew {
   --icon: url('../assets/material-symbols/open_in_new.svg');

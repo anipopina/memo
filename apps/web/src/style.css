@@ -307,17 +307,63 @@ button:disabled {
   font-size: 13px;
   padding: 10px 12px;
 }
+.note-search-result {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.note-snippet {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.note-search-result mark,
+.tiptap .memo-search-match {
+  background: var(--accent);
+  color: var(--sidebar);
+  border-radius: 2px;
+}
 .list-bottom {
   margin-top: auto;
   padding-top: 12px;
+  flex-shrink: 0;
 }
-.add-existing {
+.list-search {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  width: 100%;
-  text-align: left;
+  gap: 4px;
+}
+.list-search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.list-search-field input {
+  margin-top: 0;
+  padding-inline: 8px;
+}
+.list-search-field input::-webkit-search-cancel-button {
+  display: none;
+}
+.list-search-clear {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-end: 1px;
+  min-height: 0;
+  background: color-mix(in srgb, var(--sidebar) 75%, transparent);
+  border: 0;
+}
+.list-search-clear:hover {
+  background: color-mix(in srgb, var(--hover) 85%, transparent);
+}
+.list-search-status p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.list-search-status span {
+  display: block;
 }
 .site-link {
   border-top: 1px solid var(--line);

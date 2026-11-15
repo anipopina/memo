@@ -9,6 +9,7 @@ import { parseMarkdown } from '../../core/src/markdown';
 import { MemoLine } from './memo-line';
 import { liveLinksPlugin } from './live-links';
 import { pasteClipboard, serializeClipboard } from './clipboard';
+import { searchHighlightExtension } from './search-highlight';
 const LiveLink = Link.extend({
   addProseMirrorPlugins() {
     return [...(this.parent?.() ?? []), liveLinksPlugin()];
@@ -20,13 +21,16 @@ export function createMemoEditor(options: {
   onChange: (editor: CoreEditor) => void;
   onLink?: (href: string, event: MouseEvent) => void;
   onComposition: (composing: boolean) => void;
+  searchQuery?: () => string;
 }): Editor {
+  const { searchQuery } = options;
   const editor: Editor = new Editor({
     extensions: [
       Document,
       MemoLine,
       Text,
       UndoRedo,
+      ...(searchQuery ? [searchHighlightExtension(searchQuery)] : []),
       LiveLink.configure({
         openOnClick: false,
         autolink: false,

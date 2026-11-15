@@ -1,5 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { assertNoteSize, isNoteToken } from '../../packages/core/src/note';
+import {
+  noteSearchPattern,
+  type NoteSearchResponse,
+  type NoteSearchResult,
+} from '../../packages/core/src/note-search';
 import { hash, TokenVault } from './crypto';
 import {
   Conflict,
@@ -44,6 +49,10 @@ const referenceKey = (account: string, token: string) => ({
   pk: `account#${account}`,
   sk: `note#${hash(token)}`,
 });
+const WEB_SEARCH_LIMIT = 50;
+const WEB_SEARCH_BATCH_SIZE = 8;
+const SEARCH_CONTEXT_LENGTH = 24;
+
 export class Notes {
   constructor(
     readonly repo: Repository,
@@ -204,25 +213,28 @@ export class Notes {
       entry = await this.repo.get(key);
     if (entry) await this.repo.commit([{ key, expected: entry.rev }]);
   }
-  async list(
-    account: string,
-    { after, limit }: { after?: string; limit?: number } = {},
-  ) {
+  private async listReferences(account: string) {
     const rows = await this.repo.query<Reference>(
       `account#${account}`,
       'note#',
     );
-    const references = rows
-      .map(({ value }) => ({
-        ...value,
-        token: this.vault.decrypt(value.token, `${account}:${value.noteHash}`),
-      }))
-      .filter((item) => !after || item.token > after);
+    return rows.map(({ value }) => ({
+      ...value,
+      token: this.vault.decrypt(value.token, `${account}:${value.noteHash}`),
+    }));
+  }
+  async list(
+    account: string,
+    { after, limit }: { after?: string; limit?: number } = {},
+  ) {
+    const references = (await this.listReferences(account)).filter(
+      (item) => !after || item.token > after,
+    );
     if (limit !== undefined)
       references.sort((a, b) =>
         a.token < b.token ? -1 : a.token > b.token ? 1 : 0,
       );
-    else references.sort((a, b) => b.addedAt - a.addedAt);
+    else references.sort(byListOrder);
     return Promise.all(
       references.slice(0, limit).map(async (value) => {
         const metadata = await this.repo.get<NoteVersion>({
@@ -236,6 +248,47 @@ export class Notes {
         };
       }),
     );
+  }
+  async searchList(
+    account: string,
+    query: string,
+  ): Promise<NoteSearchResponse> {
+    const references = (await this.listReferences(account)).sort(byListOrder);
+    const candidates = references.slice(0, WEB_SEARCH_LIMIT);
+    const pattern = noteSearchPattern(query);
+    const results: NoteSearchResult[] = [];
+    for (
+      let start = 0;
+      start < candidates.length;
+      start += WEB_SEARCH_BATCH_SIZE
+    ) {
+      const batch = await Promise.all(
+        candidates
+          .slice(start, start + WEB_SEARCH_BATCH_SIZE)
+          .map(async ({ token }) => {
+            try {
+              const { content } = await this.read(token);
+              const title = noteTitle(content);
+              const titleMatches = title.search(pattern) !== -1;
+              const snippet = titleMatches
+                ? undefined
+                : searchSnippet(content, pattern);
+              if (!titleMatches && snippet === undefined) return;
+              await this.requireMember(account, token);
+              return { token, title, snippet };
+            } catch (error) {
+              if (!(error instanceof AppError && error.code === 'not_found'))
+                throw error;
+            }
+          }),
+      );
+      for (const result of batch) if (result) results.push(result);
+    }
+    return {
+      results,
+      truncatedAt:
+        references.length > WEB_SEARCH_LIMIT ? WEB_SEARCH_LIMIT : null,
+    };
   }
   async mutate(
     token: string,
@@ -301,6 +354,36 @@ export class Notes {
     }
     throw new AppError('version_conflict', 409);
   }
+}
+
+function byListOrder(a: Reference, b: Reference): number {
+  return b.addedAt - a.addedAt;
+}
+
+function searchSnippet(
+  content: string,
+  pattern: RegExp,
+): NoteSearchResult['snippet'] {
+  const { value: match } = content.matchAll(pattern).next();
+  if (!match) return;
+  const end = match.index + match[0].length;
+  // Read at most two UTF-16 units per code point near the match.
+  const before = Array.from(
+    content.slice(
+      Math.max(0, match.index - SEARCH_CONTEXT_LENGTH * 2),
+      match.index,
+    ),
+  )
+    .slice(-SEARCH_CONTEXT_LENGTH)
+    .join('');
+  const after = Array.from(content.slice(end, end + SEARCH_CONTEXT_LENGTH * 2))
+    .slice(0, SEARCH_CONTEXT_LENGTH)
+    .join('');
+  return {
+    text: before + match[0] + after,
+    truncatedBefore: match.index > before.length,
+    truncatedAfter: end + after.length < content.length,
+  };
 }
 
 function noteTitle(content: string): string {

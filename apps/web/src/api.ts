@@ -12,12 +12,14 @@ export async function api<T>(
   path: string,
   body?: unknown,
   method = body === undefined ? 'GET' : 'POST',
+  signal?: AbortSignal,
 ): Promise<T> {
+  const timeout = AbortSignal.timeout(API_TIMEOUT_MS);
   const response = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
     cache: 'no-store',
-    signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

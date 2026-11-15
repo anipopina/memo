@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { isNoteToken, MAX_NOTE_BYTES } from '../../packages/core/src/note';
+import { MAX_NOTE_SEARCH_QUERY_LENGTH } from '../../packages/core/src/note-search';
 import { Auth, SESSION_SECONDS } from './auth';
 import { Notes, AppError } from './notes';
 import { hash, TokenVault } from './crypto';
@@ -82,14 +83,16 @@ export function createApp(repo: Repository, config: AppConfig) {
             ? 'oauth-token'
             : c.req.path.startsWith('/api/auth/')
               ? 'auth'
-              : c.req.method === 'PUT'
-                ? 'create'
-                : 'write';
+              : c.req.path === '/api/list/search'
+                ? 'search'
+                : c.req.method === 'PUT'
+                  ? 'create'
+                  : 'write';
     const period = group === 'create' ? 3600 : 60,
       limit =
         group === 'create'
           ? 30
-          : group === 'auth' || group === 'oauth-register'
+          : group === 'auth' || group === 'oauth-register' || group === 'search'
             ? 20
             : group === 'read'
               ? 300
@@ -207,6 +210,15 @@ export function createApp(repo: Repository, config: AppConfig) {
   app.get('/api/list', async (c) =>
     c.json(await notes.list(c.get('account')!)),
   );
+  app.post('/api/list/search', async (c) => {
+    const { query } = z
+      .object({
+        query: z.string().trim().min(1).max(MAX_NOTE_SEARCH_QUERY_LENGTH),
+      })
+      .strict()
+      .parse(await c.req.json());
+    return c.json(await notes.searchList(c.get('account')!, query));
+  });
   app.post('/api/list', async (c) => {
     const { token } = z
       .object({ token: tokenSchema })

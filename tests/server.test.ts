@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -82,6 +82,77 @@ describe('persistent note transactions', () => {
 });
 
 describe('HTTP boundaries', () => {
+  it('searches only the signed-in list and caps saved body reads in list order', async () => {
+    const { app, notes, repo } = fixture();
+    const session = randomBytes(32).toString('base64url');
+    const sessionValue = { account: 'alice', expires: nowSeconds() + 3600 };
+    await repo.commit([
+      {
+        key: { pk: `session#${hash(session)}`, sk: 'session' },
+        expected: null,
+        value: sessionValue,
+      },
+    ]);
+    const titleHit = token(),
+      bodyHit = token();
+    await notes.create(titleHit, '題名 A+B', 'alice');
+    await notes.create(
+      bodyHit,
+      `会議\n${'前'.repeat(30)}a+b${'後'.repeat(30)}`,
+      'alice',
+    );
+    await notes.create(token(), '正規表現なら一致する aaab', 'alice');
+    await notes.create(token(), '別アカウントの A+B', 'bob');
+    const search = (query: string, authenticated = true) =>
+      app.request('/api/list/search', {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'application/json',
+          ...(authenticated ? { Cookie: `__Host-memo=${session}` } : {}),
+        },
+        body: JSON.stringify({ query }),
+      });
+    expect((await search('a+b', false)).status).toBe(401);
+    expect((await search('　')).status).toBe(400);
+    const response = await search(' a+b ');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    const matches = await response.json();
+    expect(matches.truncatedAt).toBeNull();
+    expect(matches.results).toHaveLength(2);
+    expect(matches.results).toEqual(
+      expect.arrayContaining([
+        { token: titleHit, title: '題名 A+B' },
+        {
+          token: bodyHit,
+          title: '会議',
+          snippet: {
+            text: `${'前'.repeat(24)}a+b${'後'.repeat(24)}`,
+            truncatedBefore: true,
+            truncatedAfter: true,
+          },
+        },
+      ]),
+    );
+    const many = '共通する本文';
+    for (let i = 0; i < 51; i++) {
+      await notes.create(token(), many, 'alice');
+    }
+    const listed = await notes.list('alice');
+    const read = vi.spyOn(repo, 'get');
+    const capped = await (await search(many)).json();
+    expect(read.mock.calls.filter(([key]) => key.sk === 'note')).toHaveLength(
+      50,
+    );
+    expect(capped.truncatedAt).toBe(50);
+    expect(capped.results).toEqual(
+      listed
+        .slice(0, 50)
+        .filter(({ title }) => title === many)
+        .map(({ token, title }) => ({ token, title })),
+    );
+  });
+
   it('does not create a note on reads, rejects foreign origins and enforces note size', async () => {
     const { app } = fixture(),
       id = token();

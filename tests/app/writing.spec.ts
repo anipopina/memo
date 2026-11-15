@@ -4,6 +4,122 @@ import { randomBytes } from 'node:crypto';
 test.use({ baseURL: `http://localhost:${process.env.MEMO_APP_PORT}` });
 const editorName = { name: 'メモ本文', exact: true };
 
+test('search highlights list and editor matches when switching notes and clears both', async ({
+  page,
+}) => {
+  const tokens = Array.from({ length: 3 }, () =>
+    randomBytes(16).toString('base64url'),
+  );
+  const titles = ['日記', '旅行の予定', '来月の予定'];
+  await page.route('**/api/session', (route) =>
+    route.fulfill({ json: { signedIn: true, account: 'search-test' } }),
+  );
+  await page.route('**/api/list', (route) =>
+    route.fulfill({
+      json: tokens.map((token, i) => ({
+        token,
+        title: titles[i],
+        addedAt: 3 - i,
+      })),
+    }),
+  );
+  await page.route('**/api/notes/*', (route) => {
+    const token = new URL(route.request().url()).pathname.split('/').at(-1);
+    const index = tokens.indexOf(token!);
+    return route.fulfill({
+      json: {
+        content:
+          index === 0 ? '日記\n週末は旅行に行く\n- 旅行の準備' : titles[index],
+        version: 1,
+      },
+    });
+  });
+  await page.route('**/api/list/search', (route) => {
+    expect(route.request().postDataJSON()).toEqual({ query: '旅行' });
+    return route.fulfill({
+      json: {
+        results: [
+          {
+            token: tokens[0],
+            title: titles[0],
+            snippet: {
+              text: '週末は旅行に行く',
+              truncatedBefore: true,
+              truncatedAfter: false,
+            },
+          },
+          { token: tokens[1], title: titles[1] },
+        ],
+        truncatedAt: 50,
+      },
+    });
+  });
+
+  await page.goto('/' + tokens[2]);
+  const toggle = page.getByRole('button', { name: 'メモリスト', exact: true });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true')
+    await toggle.click();
+  const list = page.getByRole('complementary', { name: 'メモリスト' });
+  const rows = list.getByRole('navigation', { name: '自分のメモ' });
+  const input = list.getByRole('searchbox', { name: 'メモを検索' });
+  const clear = list.getByRole('button', { name: '検索をクリア' });
+  const editor = page.getByRole('textbox', editorName);
+  const editorMatches = editor.locator('mark');
+  await expect(rows.getByRole('button')).toHaveCount(3);
+  await expect(list.getByText('URLでメモを追加')).toHaveCount(0);
+  const emptyBox = await input.boundingBox();
+  const emptyPadding = await input.evaluate(
+    (element) => getComputedStyle(element).paddingInlineEnd,
+  );
+  await input.fill('旅行');
+  await expect(clear).toBeVisible();
+  await expect(input).toHaveCSS('padding-inline-end', emptyPadding);
+  const filledBox = (await input.boundingBox())!;
+  const clearBox = (await clear.boundingBox())!;
+  expect(filledBox.width).toBe(emptyBox!.width);
+  expect(clearBox.x).toBeGreaterThanOrEqual(filledBox.x);
+  expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(
+    filledBox.x + filledBox.width,
+  );
+  expect(clearBox.y).toBeGreaterThanOrEqual(filledBox.y);
+  expect(clearBox.y + clearBox.height).toBeLessThanOrEqual(
+    filledBox.y + filledBox.height,
+  );
+  await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
+  await expect(rows.getByRole('button')).toHaveCount(3);
+  await input.press('Enter');
+  await expect(rows.getByRole('button')).toHaveCount(2);
+  await expect(rows.locator('mark')).toHaveText(['旅行', '旅行']);
+  await expect(rows.getByRole('button').first()).toContainText(
+    '週末は旅行に行く',
+  );
+  await expect(list.getByRole('status')).toContainText('先頭50件');
+  await expect(editor).toHaveText(titles[2]);
+  await expect(editorMatches).toHaveCount(0);
+
+  await rows.getByRole('button').first().click();
+  await expect(editorMatches).toHaveText(['旅行', '旅行']);
+  if ((await toggle.getAttribute('aria-expanded')) === 'true')
+    await toggle.click();
+  await expect(list).toBeHidden();
+  await expect(editorMatches).toHaveCount(2);
+  await editor.focus();
+  await page.keyboard.insertText('と旅行の日程');
+  await expect(editorMatches).toHaveCount(3);
+
+  await toggle.click();
+  await expect(rows.getByRole('button')).toHaveCount(2);
+  await clear.click();
+  await expect(input).toBeFocused();
+  await expect(rows.getByRole('button')).toHaveCount(3);
+  await expect(editorMatches).toHaveCount(0);
+  await input.fill('旅行');
+  await list.getByRole('button', { name: '検索', exact: true }).click();
+  await rows.getByRole('button', { name: titles[1], exact: true }).click();
+  await expect(editor).toHaveText(titles[1]);
+  await expect(editorMatches).toHaveText(['旅行']);
+});
+
 test('writing persists, sharing works and direct unknown URLs do not create notes', async ({
   page,
   context,
