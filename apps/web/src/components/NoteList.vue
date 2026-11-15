@@ -22,6 +22,7 @@ const { items, selected, signedIn, busy } = defineProps<{
 const emit = defineEmits<{
   select: [token: string];
   create: [];
+  move: [token: string, before: string | null];
   account: [];
   close: [];
   searchQuery: [query: string];
@@ -38,6 +39,60 @@ const rows = computed(() => {
   return response.value.results.filter(({ token }) => listed.has(token));
 });
 const pattern = computed(() => noteSearchPattern(query.value.trim()));
+const canMove = computed(
+  () => !busy && !pending.value && !response.value && items.length > 1,
+);
+const dragged = shallowRef('');
+const dropTarget = shallowRef<{ token: string; below: boolean }>();
+
+function endDrag() {
+  dragged.value = '';
+  dropTarget.value = undefined;
+}
+function startDrag(event: DragEvent, token: string) {
+  if (!canMove.value || !event.dataTransfer) {
+    event.preventDefault();
+    return;
+  }
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/x-memo-reorder', '');
+  dragged.value = token;
+}
+function dragPosition(event: DragEvent) {
+  const row = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  return event.clientY >= row.top + row.height / 2;
+}
+function dragOver(event: DragEvent, token: string) {
+  if (!canMove.value || !dragged.value) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  dropTarget.value =
+    token === dragged.value ? undefined : { token, below: dragPosition(event) };
+}
+function leaveRows(event: DragEvent) {
+  const nextTarget = event.relatedTarget;
+  if (
+    !(nextTarget instanceof Node) ||
+    !(event.currentTarget as HTMLElement).contains(nextTarget)
+  )
+    dropTarget.value = undefined;
+}
+function drop(event: DragEvent, token: string) {
+  if (!canMove.value || !dragged.value) return;
+  event.preventDefault();
+  const source = dragged.value;
+  endDrag();
+  if (source === token) return;
+  const index = items.findIndex((item) => item.token === token);
+  if (index === -1) return;
+  const before = dragPosition(event)
+    ? (items[index + 1]?.token ?? null)
+    : token;
+  if (source !== before) emit('move', source, before);
+}
+watch(canMove, (value) => {
+  if (!value) endDrag();
+});
 
 function highlight(text: string) {
   const parts: { text: string; match: boolean }[] = [];
@@ -125,12 +180,22 @@ onBeforeUnmount(resetSearch);
       >
         <MaterialIcon name="add" /> 新しいメモ
       </button>
-      <nav aria-label="自分のメモ">
+      <nav aria-label="自分のメモ" @dragleave="leaveRows">
         <div
           v-for="item in rows"
           :key="item.token"
           class="note-row"
-          :class="{ selected: item.token === selected }"
+          :class="{
+            selected: item.token === selected,
+            'drop-before':
+              dropTarget?.token === item.token && !dropTarget.below,
+            'drop-after': dropTarget?.token === item.token && dropTarget.below,
+          }"
+          :draggable="canMove"
+          @dragstart="startDrag($event, item.token)"
+          @dragover="dragOver($event, item.token)"
+          @drop="drop($event, item.token)"
+          @dragend="endDrag"
         >
           <button
             class="note-select"

@@ -82,7 +82,9 @@ defineExpose({ refresh });
                   ? '一覧・検索・本文取得'
                   : s === 'memo:create'
                     ? '新規作成'
-                    : '編集',
+                    : s === 'memo:reorder'
+                      ? '並び替え'
+                      : '編集',
               )
               .join(' / ')
           }}

@@ -110,6 +110,7 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
       'append_note',
       'create_note',
       'list_notes',
+      'move_note',
       'read_note',
       'search_notes',
       'write_note',
@@ -241,6 +242,21 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
     const second = randomBytes(16).toString('base64url');
     await notes.create(second, '別の本文', 'alice');
     await expectRead(second, '別の本文', 1);
+    await call('move_note', { token: created.token, before_token: second });
+    const ordered = await call('list_notes', { order: 'list', limit: 1 });
+    expect(ordered.notes[0].token).toBe(created.token);
+    expect(
+      (await call('list_notes', { order: 'list', cursor: ordered.next_cursor }))
+        .notes[0].token,
+    ).toBe(second);
+    expect(
+      (
+        await client.callTool({
+          name: 'move_note',
+          arguments: { token: second, before_token: other },
+        })
+      ).isError,
+    ).toBe(true);
     const firstPage = await call('list_notes', { limit: 1 });
     expect(firstPage.notes).toHaveLength(1);
     expect(firstPage.next_cursor).toBeTruthy();
@@ -258,11 +274,45 @@ it('official SDK discovers OAuth, registers, exchanges PKCE, and operates only o
     expect(emptyPage.notes).toEqual([]);
     expect(emptyPage.next_cursor).toBeTruthy();
     await notes.remove('alice', second);
-    const narrowed = await oauth.token(
+    const legacy = await oauth.token(
       new URLSearchParams({
         client_id: clientInfo!.client_id,
         grant_type: 'refresh_token',
         refresh_token: tokens!.refresh_token!,
+        resource: oauth.resource,
+        scope: 'memo:read memo:create memo:write',
+      }),
+    );
+    const legacyClient = new Client({ name: 'legacy', version: '1' });
+    try {
+      await legacyClient.connect(
+        new StreamableHTTPClientTransport(url, {
+          requestInit: {
+            headers: { Authorization: `Bearer ${legacy.access_token}` },
+          },
+        }),
+      );
+      const names = (await legacyClient.listTools()).tools.map(
+        (tool) => tool.name,
+      );
+      expect(names).toContain('write_note');
+      expect(names).not.toContain('move_note');
+      expect(
+        (
+          await legacyClient.callTool({
+            name: 'move_note',
+            arguments: { token: created.token, before_token: null },
+          })
+        ).isError,
+      ).toBe(true);
+    } finally {
+      await legacyClient.close();
+    }
+    const narrowed = await oauth.token(
+      new URLSearchParams({
+        client_id: clientInfo!.client_id,
+        grant_type: 'refresh_token',
+        refresh_token: legacy.refresh_token!,
         resource: oauth.resource,
         scope: 'memo:read',
       }),

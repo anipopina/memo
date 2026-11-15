@@ -91,11 +91,17 @@ test('Passkey consent, token exchange, connection revocation and denial work end
   await expect(
     page.getByRole('textbox', { name: 'メモ本文', exact: true }),
   ).toBeVisible();
-  const auth = await authorization(page);
+  const auth = await authorization(
+    page,
+    'memo:read memo:create memo:write memo:reorder',
+  );
   await page.route('**/oauth-test-callback?**', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<p>callback</p>' }),
   );
   await page.goto(auth.location);
+  await expect(
+    page.getByText('メモリストの並び替え', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Passkeyでログイン' }).click();
   await page
     .getByRole('textbox', { name: 'Passkeyの名前', exact: true })
@@ -122,6 +128,7 @@ test('Passkey consent, token exchange, connection revocation and denial work end
   });
   expect(exchanged.status()).toBe(200);
   const token = await exchanged.json();
+  expect(token.scope.split(' ')).toContain('memo:reorder');
   await page.goto('/');
   await expect(
     page.getByRole('textbox', { name: 'メモ本文', exact: true }),
@@ -131,6 +138,7 @@ test('Passkey consent, token exchange, connection revocation and denial work end
     name: '連携中のAIクライアント',
   });
   await expect(connections).toContainText('Test AI');
+  await expect(connections).toContainText('並び替え');
   await expect(
     page.getByRole('textbox', { name: 'MCP URL', exact: true }),
   ).toHaveValue(`${auth.origin}/mcp/account`);

@@ -41,6 +41,9 @@ interface Reference extends RecordValue {
   noteHash: string;
   addedAt: number;
 }
+interface ListOrder extends RecordValue {
+  hashes: string[];
+}
 export const noteKey = (token: string) => ({
   pk: `note#${hash(token)}`,
   sk: 'note',
@@ -49,6 +52,13 @@ const referenceKey = (account: string, token: string) => ({
   pk: `account#${account}`,
   sk: `note#${hash(token)}`,
 });
+const listOrderKey = (account: string) => ({
+  pk: `account#${account}`,
+  sk: 'list-order',
+});
+// Leave room under DynamoDB's item limit for the keys and record envelope.
+const MAX_ORDERED_NOTES = 5_000;
+const LIST_CHANGE_ATTEMPTS = 4;
 const WEB_SEARCH_LIMIT = 50;
 const WEB_SEARCH_BATCH_SIZE = 8;
 const SEARCH_CONTEXT_LENGTH = 24;
@@ -209,9 +219,31 @@ export class Notes {
     }
   }
   async remove(account: string, token: string): Promise<void> {
-    const key = referenceKey(account, token),
-      entry = await this.repo.get(key);
-    if (entry) await this.repo.commit([{ key, expected: entry.rev }]);
+    const key = referenceKey(account, token);
+    const orderKey = listOrderKey(account);
+    for (let attempt = 0; attempt < LIST_CHANGE_ATTEMPTS; attempt++) {
+      const [entry, order] = await Promise.all([
+        this.repo.get<Reference>(key),
+        this.repo.get<ListOrder>(orderKey),
+      ]);
+      if (!entry) return;
+      const value: ListOrder = {
+        hashes: (order?.value.hashes ?? []).filter(
+          (noteHash) => noteHash !== entry.value.noteHash,
+        ),
+      };
+      try {
+        // Updating the order revision prevents a concurrent move from restoring a removed entry.
+        await this.repo.commit([
+          { key, expected: entry.rev },
+          { key: orderKey, expected: order?.rev ?? null, value },
+        ]);
+        return;
+      } catch (error) {
+        if (!(error instanceof Conflict)) throw error;
+      }
+    }
+    throw new Conflict();
   }
   private async listReferences(account: string) {
     const rows = await this.repo.query<Reference>(
@@ -225,16 +257,26 @@ export class Notes {
   }
   async list(
     account: string,
-    { after, limit }: { after?: string; limit?: number } = {},
+    {
+      after,
+      limit,
+      order = 'list',
+    }: { after?: string; limit?: number; order?: 'list' | 'token' } = {},
   ) {
-    const references = (await this.listReferences(account)).filter(
-      (item) => !after || item.token > after,
-    );
-    if (limit !== undefined)
-      references.sort((a, b) =>
-        a.token < b.token ? -1 : a.token > b.token ? 1 : 0,
-      );
-    else references.sort(byListOrder);
+    let references = await this.listReferences(account);
+    if (order === 'list') {
+      const saved = await this.repo.get<ListOrder>(listOrderKey(account));
+      sortList(references, saved?.value.hashes);
+      if (after) {
+        const index = references.findIndex(({ token }) => token === after);
+        if (index === -1) throw new AppError('invalid_cursor');
+        references = references.slice(index + 1);
+      }
+    } else {
+      references = references
+        .filter((item) => !after || item.token > after)
+        .sort((a, b) => (a.token < b.token ? -1 : a.token > b.token ? 1 : 0));
+    }
     return Promise.all(
       references.slice(0, limit).map(async (value) => {
         const metadata = await this.repo.get<NoteVersion>({
@@ -249,11 +291,48 @@ export class Notes {
       }),
     );
   }
+  async moveInList(account: string, token: string, before: string | null) {
+    if (token === before) throw new AppError('invalid_move');
+    const key = listOrderKey(account);
+    for (let attempt = 0; attempt < LIST_CHANGE_ATTEMPTS; attempt++) {
+      const saved = await this.repo.get<ListOrder>(key);
+      const references = sortList(
+        await this.listReferences(account),
+        saved?.value.hashes,
+      );
+      const from = references.findIndex((item) => item.token === token);
+      const to =
+        before === null
+          ? references.length
+          : references.findIndex((item) => item.token === before);
+      if (from === -1 || to === -1) throw new AppError('not_found', 404);
+      const destination = from < to ? to - 1 : to;
+      if (destination === from) return;
+      if (references.length > MAX_ORDERED_NOTES)
+        throw new AppError('list_order_too_large', 413);
+      const [moved] = references.splice(from, 1);
+      references.splice(destination, 0, moved!);
+      const value: ListOrder = {
+        hashes: references.map((item) => item.noteHash),
+      };
+      try {
+        await this.repo.commit([{ key, expected: saved?.rev ?? null, value }]);
+        return;
+      } catch (error) {
+        if (!(error instanceof Conflict)) throw error;
+      }
+    }
+    throw new Conflict();
+  }
   async searchList(
     account: string,
     query: string,
   ): Promise<NoteSearchResponse> {
-    const references = (await this.listReferences(account)).sort(byListOrder);
+    const saved = await this.repo.get<ListOrder>(listOrderKey(account));
+    const references = sortList(
+      await this.listReferences(account),
+      saved?.value.hashes,
+    );
     const candidates = references.slice(0, WEB_SEARCH_LIMIT);
     const pattern = noteSearchPattern(query);
     const results: NoteSearchResult[] = [];
@@ -356,8 +435,13 @@ export class Notes {
   }
 }
 
-function byListOrder(a: Reference, b: Reference): number {
-  return b.addedAt - a.addedAt;
+function sortList(references: Reference[], hashes: string[] = []): Reference[] {
+  const rank = new Map(hashes.map((noteHash, index) => [noteHash, index]));
+  return references.sort(
+    (a, b) =>
+      (rank.get(a.noteHash) ?? -1) - (rank.get(b.noteHash) ?? -1) ||
+      b.addedAt - a.addedAt,
+  );
 }
 
 function searchSnippet(

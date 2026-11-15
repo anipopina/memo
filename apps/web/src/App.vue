@@ -111,19 +111,42 @@ function topToken() {
   }
   return token;
 }
+let listRequest = 0;
 async function refreshList() {
+  const account = accountId.value;
+  const request = ++listRequest;
+  const isCurrent = () =>
+    request === listRequest && account === accountId.value;
   if (!signedIn.value) {
     items.value = [];
     return;
   }
   try {
-    items.value = await api<NoteReference[]>('/list');
+    const next = await api<NoteReference[]>('/list');
+    if (isCurrent()) items.value = next;
   } catch (error) {
+    if (!isCurrent()) return;
     if (error instanceof ApiError && error.status === 401) {
       signedIn.value = false;
       accountId.value = '';
       items.value = [];
     } else throw error;
+  }
+}
+async function moveNote(token: string, before: string | null) {
+  if (!signedIn.value || busy.value) return;
+  busy.value = true;
+  message.value = '';
+  try {
+    await api('/list/order', { token, before });
+    await refreshList();
+  } catch (error) {
+    message.value =
+      error instanceof ApiError && error.code === 'list_order_too_large'
+        ? 'メモが多いため、並び順を保存できませんでした。'
+        : '並び順を更新できませんでした。もう一度お試しください。';
+  } finally {
+    busy.value = false;
   }
 }
 async function focusEditor() {
@@ -354,7 +377,7 @@ async function recover() {
   }
 }
 const listTimer = setInterval(() => {
-  if (signedIn.value && document.visibilityState === 'visible')
+  if (signedIn.value && !busy.value && document.visibilityState === 'visible')
     void refreshList().catch(() => {});
 }, 15000);
 onMounted(async () => {
@@ -397,6 +420,7 @@ onBeforeUnmount(() => {
       :signed-in="signedIn"
       :busy="busy"
       @select="select"
+      @move="moveNote"
       @create="create"
       @account="accountDialog?.open()"
       @search-query="searchQuery = $event"

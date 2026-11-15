@@ -16,7 +16,12 @@ export const OAUTH = {
   code: 60,
   client: 90 * 86400,
 };
-export const SCOPES = ['memo:read', 'memo:create', 'memo:write'] as const;
+export const SCOPES = [
+  'memo:read',
+  'memo:create',
+  'memo:write',
+  'memo:reorder',
+] as const;
 export type Scope = (typeof SCOPES)[number];
 interface Client extends RecordValue {
   client_id: string;

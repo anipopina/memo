@@ -295,6 +295,15 @@ button:disabled {
 .note-row.selected {
   background: var(--selected);
 }
+.note-row[draggable='true'] .note-select {
+  cursor: grab;
+}
+.note-row.drop-before {
+  box-shadow: inset 0 2px var(--accent);
+}
+.note-row.drop-after {
+  box-shadow: inset 0 -2px var(--accent);
+}
 .note-select {
   border: 0;
   background: transparent;

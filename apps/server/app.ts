@@ -219,6 +219,14 @@ export function createApp(repo: Repository, config: AppConfig) {
       .parse(await c.req.json());
     return c.json(await notes.searchList(c.get('account')!, query));
   });
+  app.post('/api/list/order', async (c) => {
+    const { token, before } = z
+      .object({ token: tokenSchema, before: tokenSchema.nullable() })
+      .strict()
+      .parse(await c.req.json());
+    await notes.moveInList(c.get('account')!, token, before);
+    return c.json({ ok: true });
+  });
   app.post('/api/list', async (c) => {
     const { token } = z
       .object({ token: tokenSchema })

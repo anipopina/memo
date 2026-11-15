@@ -28,6 +28,71 @@ afterEach(() => {
 });
 
 describe('persistent note transactions', () => {
+  it('saves account order, prepends additions, and keeps concurrent moves and removal consistent', async () => {
+    const { app, notes, repo } = fixture();
+    const first = token(),
+      second = token(),
+      third = token(),
+      foreign = token();
+    let timestamp = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => timestamp++);
+    try {
+      for (const id of [first, second, third])
+        await notes.create(id, 'body', 'alice');
+    } finally {
+      clock.mockRestore();
+    }
+    await notes.create(foreign, 'body', 'bob');
+    const session = randomBytes(32).toString('base64url');
+    const value = { account: 'alice', expires: nowSeconds() + 3600 };
+    await repo.commit([
+      {
+        key: { pk: `session#${hash(session)}`, sk: 'session' },
+        expected: null,
+        value,
+      },
+    ]);
+    const move = (token: string, before: string | null, cookie?: string) =>
+      app.request('/api/list/order', {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'application/json',
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        body: JSON.stringify({ token, before }),
+      });
+    const order = async () =>
+      (await notes.list('alice')).map((item) => item.token);
+    await expect(
+      notes.moveInList('alice', first, foreign),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      notes.moveInList('alice', foreign, first),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await notes.moveInList('alice', first, null);
+    expect((await move(second, third)).status).toBe(401);
+    expect((await move(second, third, `__Host-memo=${session}`)).status).toBe(
+      200,
+    );
+    expect(await order()).toEqual([second, third, first]);
+    const added = token();
+    await notes.create(added, 'body', 'alice');
+    expect(await order()).toEqual([added, second, third, first]);
+    await Promise.all([
+      notes.moveInList('alice', first, second),
+      notes.remove('alice', third),
+    ]);
+    expect(await order()).toEqual([added, first, second]);
+    await notes.add('alice', third);
+    expect(await order()).toEqual([third, added, first, second]);
+    expect(
+      (await notes.searchList('alice', 'body')).results.map(
+        (item) => item.token,
+      ),
+    ).toEqual(await order());
+  });
+
   it('rejects stale versions and deduplicates an atomic concurrent append without copying full content into operation records', async () => {
     const { notes, repo } = fixture(),
       id = token(),

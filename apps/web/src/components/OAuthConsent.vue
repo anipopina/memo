@@ -74,6 +74,9 @@ onMounted(async () => {
           新しいメモの作成とリストへの追加
         </li>
         <li v-if="info.scopes.includes('memo:write')">メモ本文の編集・追記</li>
+        <li v-if="info.scopes.includes('memo:reorder')">
+          メモリストの並び替え
+        </li>
       </ul>
       <p class="hint">
         連携はアカウント画面から解除できます。解除しても取得済みの本文や秘密URLは無効になりません。

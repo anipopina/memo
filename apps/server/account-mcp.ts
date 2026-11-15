@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import { Notes, AppError } from './notes';
-import type { OAuth } from './oauth';
+import { SCOPES, type OAuth } from './oauth';
 import { isNoteToken } from '../../packages/core/src/note';
 
 export async function accountMcpRequest(
@@ -20,7 +20,7 @@ export async function accountMcpRequest(
       status: 401,
       headers: {
         'Content-Type': 'application/json',
-        'WWW-Authenticate': `Bearer resource_metadata="${metadata}", scope="memo:read memo:create memo:write"`,
+        'WWW-Authenticate': `Bearer resource_metadata="${metadata}", scope="${SCOPES.join(' ')}"`,
       },
     });
   if (request.method !== 'POST')
@@ -65,10 +65,15 @@ export async function accountMcpRequest(
     url: `${oauth.origin}/${token}`,
     mcp_url: `${oauth.origin}/mcp/${token}`,
   });
-  const batch = async (cursor: string | undefined, limit: number) => {
+  const batch = async (
+    cursor: string | undefined,
+    limit: number,
+    order: 'list' | 'token' = 'token',
+  ) => {
     const list = await notes.list(access.account, {
       after: cursor,
       limit: limit + 1,
+      order,
     });
     const selected = list.slice(0, limit);
     return {
@@ -81,8 +86,13 @@ export async function accountMcpRequest(
       'list_notes',
       {
         description:
-          'List notes currently in your account list, in token order. Follow next_cursor until null.',
-        inputSchema: z.object(page).strict(),
+          'List notes currently in your account list. Use order "list" to see the saved order before moving notes. Keep the same order while following next_cursor until null.',
+        inputSchema: z
+          .object({
+            ...page,
+            order: z.enum(['token', 'list']).default('token'),
+          })
+          .strict(),
         annotations: { readOnlyHint: true },
       },
       (args) =>
@@ -90,6 +100,7 @@ export async function accountMcpRequest(
           const { selected, next_cursor } = await batch(
             args.cursor,
             args.limit,
+            args.order,
           );
           return {
             notes: selected.map((n) => ({ ...n, ...urls(n.token) })),
@@ -181,6 +192,26 @@ export async function accountMcpRequest(
             args.operation_id,
           );
           return { ...urls(created.token), version: created.version };
+        }),
+    );
+  if (access.scopes.includes('memo:reorder'))
+    server.registerTool(
+      'move_note',
+      {
+        description:
+          'Move a note in your account list immediately before another note, or to the end when before_token is null. Read list_notes with order "list" to see the current order.',
+        inputSchema: z
+          .object({ token, before_token: token.nullable() })
+          .strict(),
+        annotations: { destructiveHint: false },
+        _meta: {
+          securitySchemes: [{ type: 'oauth2', scopes: ['memo:reorder'] }],
+        },
+      },
+      ({ token, before_token }) =>
+        reply(async () => {
+          await notes.moveInList(access.account, token, before_token);
+          return { ok: true };
         }),
     );
   if (access.scopes.includes('memo:write'))

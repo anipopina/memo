@@ -4,6 +4,49 @@ import { randomBytes } from 'node:crypto';
 test.use({ baseURL: `http://localhost:${process.env.MEMO_APP_PORT}` });
 const editorName = { name: 'メモ本文', exact: true };
 
+test('dragging list rows saves their new order and keeps the open note', async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, 'Native desktop drag and drop.');
+  const items = ['先頭のメモ', '中央のメモ', '末尾のメモ'].map(
+    (title, index) => ({
+      token: randomBytes(16).toString('base64url'),
+      title,
+      addedAt: 3 - index,
+    }),
+  );
+  let saved = items.slice();
+  await page.route('**/api/session', (route) =>
+    route.fulfill({ json: { signedIn: true, account: 'reorder-test' } }),
+  );
+  await page.route('**/api/list', (route) => route.fulfill({ json: saved }));
+  await page.route(`**/api/notes/${items[1].token}`, (route) =>
+    route.fulfill({ json: { content: items[1].title, version: 1 } }),
+  );
+  await page.route('**/api/list/order', (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      token: items[0].token,
+      before: null,
+    });
+    saved = [items[1], items[2], items[0]];
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto('/' + items[1].token);
+  const rows = page
+    .getByRole('navigation', { name: '自分のメモ' })
+    .getByRole('button');
+  await expect(rows).toHaveText(items.map(({ title }) => title));
+  await rows.first().dragTo(rows.last(), { targetPosition: { x: 12, y: 30 } });
+  const reordered = [items[1].title, items[2].title, items[0].title];
+  await expect(rows).toHaveText(reordered);
+  await expect(page.getByRole('textbox', editorName)).toHaveText(
+    items[1].title,
+  );
+  await page.reload();
+  await expect(rows).toHaveText(reordered);
+});
+
 test('search highlights list and editor matches when switching notes and clears both', async ({
   page,
 }) => {
