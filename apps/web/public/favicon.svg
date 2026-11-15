@@ -1,7 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-labelledby="title"
+>
+  <title id="title">memo</title>
   <path
-    fill="#d98b42"
-    fill-rule="evenodd"
-    d="M13 4h26a7 7 0 0 1 5 2l12 12a7 7 0 0 1 2 5v30a7 7 0 0 1-7 7H13a7 7 0 0 1-7-7V11a7 7 0 0 1 7-7Zm28 5v10a3 3 0 0 0 3 3h10ZM17 33a2.5 2.5 0 0 0 0 5h30a2.5 2.5 0 0 0 0-5Zm0 11a2.5 2.5 0 0 0 0 5h21a2.5 2.5 0 0 0 0-5Z"
+    d="M8 0H42L64 22V56A8 8 0 0 1 56 64H8A8 8 0 0 1 0 56V8A8 8 0 0 1 8 0Z"
+    fill="#211e1b"
+  />
+  <path d="M42 0V15A7 7 0 0 0 49 22H64Z" fill="#d98b42" />
+  <path
+    d="M14 34H49M14 48H39"
+    fill="none"
+    stroke="#eee9e1"
+    stroke-width="6"
+    stroke-linecap="round"
   />
 </svg>

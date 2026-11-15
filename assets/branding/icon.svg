@@ -1,0 +1,19 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-labelledby="title"
+>
+  <title id="title">memo</title>
+  <rect width="64" height="64" fill="#211e1b" />
+  <path d="M42 0V10.8A11.2 11.2 0 0 0 53.2 22H64Z" fill="#d98b42" />
+  <path
+    d="M14 34H49M14 48H39"
+    fill="none"
+    stroke="#eee9e1"
+    stroke-width="6"
+    stroke-linecap="round"
+  />
+</svg>
