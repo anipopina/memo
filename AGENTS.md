@@ -73,6 +73,7 @@
 - 起動・検証コマンド：正本は [package.json](package.json) のscripts。`pnpm dev`、`pnpm dev:mcp`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm test:browser`、`pnpm build`、`pnpm format:check`。pnpmの版はpackageManagerとロックファイルに従う。
 - 操作性の優先順位：使い慣れた人が書き込みやすいことを最優先し、初回説明や管理UIを本文の前に増やさない。
 - 対象環境：iPhone SafariとWindows Chrome。AIクライアントはChatGPTを優先する。Playwright WebKitの結果をiPhone実機検証と同一視しない。
+- PWA：既存のWeb App Manifestでインストールと独立したアプリ表示に対応する。オフライン起動は対象外とし、Service Workerや専用のインストール案内UIは追加しない。
 - 公開先・運用上の制約：`memo.anipopina.com` に公開済み。本体は東京、CloudFront用証明書はus-east-1。顧客管理KMS鍵や常時稼働サーバーを追加せず、Lambda環境変数の鍵＋AES-256-GCMを使用。公開・AWSリソース作成・コミットは明示的な依頼なしに行わない。
 - AI連携：既存のメモ単位MCPに加え、OAuth（Authorization Code＋PKCE S256、DCR）でリスト内のメモにアクセスするアカウント用MCPを提供する。Passkey認証を再利用し、既存テーブルの期限付きレコードで認可・失効を管理する。新規の認証サービスや検索基盤は追加しない。詳細は [設計文書](docs/design.md#oauthによるアカウント用mcp)。
 - 競合方針：手動マージ画面を設けず、差分を自動統合する。重なった範囲は保存する側を優先し、一部の変更が失われ得ることをユーザーは許容している。詳しい規則は設計文書を参照する。

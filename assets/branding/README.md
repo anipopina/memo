@@ -9,12 +9,16 @@
 - 配信用は [`apps/web/public/ogp.png`](../../apps/web/public/ogp.png)。原稿を1200×630で
   描画した不透明なPNGです。右上には裏面をオレンジで塗り、角を少し丸めた折り返しを配置しています。
   原稿を変更した場合は、同じ寸法でPNGも再出力してください。
-- ホーム画面用のPNG（`apple-touch-icon.png` とmanifest内のアイコン）は、
-  専用原稿 [`icon.svg`](icon.svg) から各サイズに描画します。折り返し左下の丸みは
+- Apple Touch Icon（`apple-touch-icon.png`）は、
+  専用原稿 [`icon.svg`](icon.svg) から描画します。折り返し左下の丸みは
   faviconの約1.6倍です。背景は不透明に保ち、外周の角丸は画像に焼き込まず
   OS側のマスク処理に任せます。
+- manifest内のインストール用PNGはfaviconのSVGから透過付きで描画し、
+  右上のカットと残る3つの角丸を保ちます。`purpose: any` とし、
+  OSによる切り抜きを前提とする `maskable` には指定しません。
+  最終的な背景や輪郭にはOS側の処理が適用される場合があります。
 - `favicon.ico` はSVG faviconと同じメモの形を使っています。
-  manifestはブラウザ表示を維持し、起動先はメモの秘密URLを含まないサイトルートです。
+  manifestは独立したアプリ表示とし、起動先はメモの秘密URLを含まないサイトルートです。
 
 設定の参考：[AppleのWeb Clipアイコン](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html)、
 [manifestのアイコン](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/icons)。

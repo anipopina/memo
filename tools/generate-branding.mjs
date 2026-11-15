@@ -21,12 +21,15 @@ try {
     return page.screenshot({ omitBackground: transparent });
   };
 
+  await writeFile(
+    publicAsset('apple-touch-icon.png'),
+    await render(icon, 180, 180),
+  );
   for (const [size, name] of [
-    [180, 'apple-touch-icon.png'],
     [192, 'icon-192.png'],
     [512, 'icon-512.png'],
   ]) {
-    await writeFile(publicAsset(name), await render(icon, size, size));
+    await writeFile(publicAsset(name), await render(favicon, size, size, true));
   }
   await writeFile(publicAsset('ogp.png'), await render(ogp, 1200, 630));
 
