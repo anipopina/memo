@@ -210,6 +210,7 @@ button:disabled {
   color: var(--muted);
 }
 .document-scroll {
+  position: relative;
   overflow: auto;
   flex: 1;
   min-height: 0;
@@ -475,8 +476,13 @@ p.list-search-status {
 .guest-list .hint {
   font-size: 12px;
 }
+.editor-overlays {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
 .indent-popover {
-  position: fixed;
+  position: absolute;
   z-index: 20;
   display: none;
   gap: 2px;
@@ -491,7 +497,7 @@ p.list-search-status {
   border-color: var(--button-border);
 }
 .link-open {
-  position: fixed;
+  position: absolute;
   z-index: 22;
   display: flex;
   align-items: center;

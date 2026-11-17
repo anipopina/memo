@@ -11,6 +11,7 @@ const { editor, composing } = defineProps<{
   editor: Editor;
   composing: boolean;
 }>();
+const container = shallowRef<HTMLElement | null>(null);
 const position = shallowRef<{ left: number; top: number } | null>(null);
 const linkAction = shallowRef<{
   left: number;
@@ -20,7 +21,10 @@ const linkAction = shallowRef<{
 const canIndent = shallowRef(false),
   canOutdent = shallowRef(false);
 function update() {
-  if (editor.isDestroyed) return;
+  if (editor.isDestroyed || !container.value) return;
+  // Measure both in the same coordinate space, including Safari's viewport pan.
+  // The scroll container then moves the overlays with the document natively.
+  const origin = container.value.getBoundingClientRect();
   canIndent.value = canShiftListIndent(editor, 1);
   canOutdent.value = canShiftListIndent(editor, -1);
   const viewport = window.visualViewport;
@@ -31,8 +35,10 @@ function update() {
     position.value =
       rect.bottom > 0 && rect.top < bottom
         ? {
-            left: Math.max(8, Math.min(innerWidth - 148, rect.right + 12)),
-            top: Math.max(54, Math.min(bottom, rect.bottom + 8)),
+            left:
+              Math.max(8, Math.min(innerWidth - 148, rect.right + 12)) -
+              origin.left,
+            top: Math.max(54, Math.min(bottom, rect.bottom + 8)) - origin.top,
           }
         : null;
   } else position.value = null;
@@ -63,8 +69,9 @@ function update() {
     if (rect.bottom > 0 && rect.top < bottom)
       linkAction.value = {
         href,
-        left: Math.min(innerWidth - 48, Math.max(8, rect.right - 10)),
-        top: Math.max(48, rect.top - 36),
+        left:
+          Math.min(innerWidth - 48, Math.max(8, rect.right - 10)) - origin.left,
+        top: Math.max(48, rect.top - 36) - origin.top,
       };
   }
 }
@@ -107,44 +114,46 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div
-    v-if="position && !composing"
-    class="indent-popover"
-    role="group"
-    aria-label="リストの階層"
-    :style="{ left: position.left + 'px', top: position.top + 'px' }"
-    @pointerdown.prevent
-    @mousedown.prevent
-  >
-    <button
-      :disabled="!canOutdent"
-      title="字上げ（Shift＋Tab）"
-      aria-label="字上げ"
-      @click="shift(-1)"
+  <div ref="container" class="editor-overlays">
+    <div
+      v-if="position && !composing"
+      class="indent-popover"
+      role="group"
+      aria-label="リストの階層"
+      :style="{ left: position.left + 'px', top: position.top + 'px' }"
+      @pointerdown.prevent
+      @mousedown.prevent
     >
-      <MaterialIcon name="keyboardTabRtl" />
-    </button>
-    <button
-      :disabled="!canIndent"
-      title="字下げ（Tab）"
-      aria-label="字下げ"
-      @click="shift(1)"
-    >
-      <MaterialIcon name="keyboardTab" />
-    </button>
+      <button
+        :disabled="!canOutdent"
+        title="字上げ（Shift＋Tab）"
+        aria-label="字上げ"
+        @click="shift(-1)"
+      >
+        <MaterialIcon name="keyboardTabRtl" />
+      </button>
+      <button
+        :disabled="!canIndent"
+        title="字下げ（Tab）"
+        aria-label="字下げ"
+        @click="shift(1)"
+      >
+        <MaterialIcon name="keyboardTab" />
+      </button>
+    </div>
+    <a
+      v-if="linkAction && !composing"
+      class="link-open"
+      :href="linkAction.href"
+      :style="{ left: linkAction.left + 'px', top: linkAction.top + 'px' }"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="リンクを別タブで開く"
+      title="別タブで開く"
+      @pointerdown.prevent
+      @mousedown.prevent
+      @blur="update"
+      ><MaterialIcon name="openInNew"
+    /></a>
   </div>
-  <a
-    v-if="linkAction && !composing"
-    class="link-open"
-    :href="linkAction.href"
-    :style="{ left: linkAction.left + 'px', top: linkAction.top + 'px' }"
-    target="_blank"
-    rel="noopener noreferrer"
-    aria-label="リンクを別タブで開く"
-    title="別タブで開く"
-    @pointerdown.prevent
-    @mousedown.prevent
-    @blur="update"
-    ><MaterialIcon name="openInNew"
-  /></a>
 </template>

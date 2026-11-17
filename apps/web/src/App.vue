@@ -667,6 +667,10 @@ onBeforeUnmount(() => {
           class="memo-document"
           @pointerdown="placeCaretFromPadding"
         />
+        <EditorOverlays
+          :editor="editor"
+          :composing="note.state.composing || previewing"
+        />
         <div
           v-if="
             !documentLoading &&
@@ -697,10 +701,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-    <EditorOverlays
-      :editor="editor"
-      :composing="note.state.composing || previewing"
-    />
     <AccountDialog
       ref="accountDialog"
       :signed-in="signedIn"
